@@ -1,0 +1,8 @@
+# Build artifacts dirs.
+/*.egg-info/
+
+# Python bytecode.
+__pycache__/
+
+# UV outputs artifacts here.
+/dist/
