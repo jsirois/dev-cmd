@@ -15,7 +15,32 @@ dependencies = [
     "ansicolors",
     "tomlkit; python_version < '3.11'",
 ]
+keywords = ["automation", "command", "runner", "testing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Unix",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Utilities",
+]
 dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/jsirois/dev-cmd"
+"Bug Tracker" = "https://github.com/jsirois/dev-cmd/issues"
+Changelog = "https://github.com/jsirois/dev-cmd/blob/main/CHANGES.md"
 
 [project.scripts]
 dev-cmd = "dev_cmd.run:main"
