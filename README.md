@@ -1,17 +1,17 @@
-# dev
+# dev-cmd
 
 [![PyPI Version](https://shields.io/pypi/v/dev-cmd.svg)](https://pypi.org/project/dev-cmd/)
 [![License](https://shields.io/pypi/l/dev-cmd.svg)](LICENSE)
 [![Supported Pythons](https://shields.io/pypi/pyversions/dev-cmd.svg)](pyproject.toml)
 [![CI](https://img.shields.io/github/actions/workflow/status/jsirois/dev-cmd/ci.yml)](https://github.com/jsirois/conscript/actions/workflows/ci.yml)
 
-The dev tool provides a simple way to define commands in `pyproject.toml` to develop your project
-with and then execute them.
+The `dev-cmd` tool provides a simple way to define commands in `pyproject.toml` to develop your
+project with and then execute them.
 
 This is a very new tool that can be expected to change rapidly and in breaking ways until the 1.0
 release. The current best documentation is the dogfooding this project uses for its own development
-described below. You can look at the `[tool.dev-cmd]` configuration in `pyproject.toml` to get a
-sense of how definition of commands, aliases and defaults works.
+described below. You can look at the `[tool.dev-cmd]` configuration in [`pyproject.toml`](
+pyproject.toml) to get a sense of how definition of commands, aliases and defaults works.
 
 ## Development
 
