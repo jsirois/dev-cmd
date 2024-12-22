@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools"]
+backend = "setuptools.build_meta"
+
+[project]
+name = "dev-cmd"
+authors = [
+    {name = "John Sirois", email = "john.sirois@gmail.com"},
+]
+description = "A simple development command runner for Python projects."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+dependencies = [
+    "ansicolors",
+    "tomlkit; python_version < '3.11'",
+]
+dynamic = ["version"]
+
+[project.scripts]
+dev-cmd = "dev_cmd.run:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "dev_cmd.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dev_cmd*"]
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pytest",
+    "pytest-xdist",
+    "ruff",
+    "types-tqdm",
+]
+
+[[tool.mypy.overrides]]
+module = ["colors.*"]
+follow_untyped_imports = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.dev-cmd.commands]
+fmt = ["ruff", "format"]
+check-fmt = ["ruff", "format", "--diff"]
+
+lint = ["ruff", "check", "--fix"]
+check-lint = ["ruff", "check"]
+
+type-check = ["mypy", "dev_cmd"]
+type-check-39 = ["mypy", "--python-version", "3.9", "dev_cmd"]
+type-check-313 = ["mypy", "--python-version",  "3.13", "dev_cmd"]
+
+[tool.dev-cmd.commands.test]
+args = ["pytest", "-n", "auto"]
+accepts-extra-args = true
+
+[tool.dev-cmd.aliases]
+checks = ["fmt", "lint", "type-check-39", "type-check-313", "test"]
+ci = ["check-fmt", "check-lint", "type-check", "test"]
+
+[tool.dev-cmd.default]
+alias = "checks"

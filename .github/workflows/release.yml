@@ -1,0 +1,65 @@
+name: Release
+on:
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to manually run a deploy for.
+        required: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  org-check:
+    name: Check GitHub Organization
+    if: ${{ github.repository_owner == 'jsirois' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Noop
+        run: "true"
+  determine-tag:
+    name: Determine the release tag to operate against.
+    needs: org-check
+    runs-on: ubuntu-24.04
+    outputs:
+      release-tag: ${{ steps.determine-tag.outputs.release-tag }}
+      release-version: ${{ steps.determine-tag.outputs.release-version }}
+    steps:
+      - name: Determine Tag
+        id: determine-tag
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            RELEASE_TAG=${{ github.event.inputs.tag }}
+          else
+            RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          fi
+          if [[ "${RELEASE_TAG}" =~ ^v[0-9]+.[0-9]+.[0-9]+$ ]]; then
+            echo "release-tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+            echo "release-version=${RELEASE_TAG#v}" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Release tag '${RELEASE_TAG}' must match 'v\d+.\d+.\d+'."
+            exit 1
+          fi
+  pypi:
+    name: Publish sdist and wheel to PyPI
+    needs: determine-tag
+    runs-on: ubuntu-24.04
+    environment: Release
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout dev-cmd ${{ needs.determine-tag.outputs.release-tag }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-tag.outputs.release-tag }}
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v4
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Publish dev-cmd ${{ needs.determine-tag.outputs.release-tag }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+          verbose: true

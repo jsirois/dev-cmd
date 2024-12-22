@@ -1,0 +1,33 @@
+name: CI
+on: [push, pull_request]
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: CI-${{ github.ref }}
+  # Queue on all branches and tags, but only cancel overlapping PR burns.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+jobs:
+  org-check:
+    name: Check GitHub Organization
+    if: github.repository_owner == 'jsirois'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Noop
+        run: "true"
+  checks:
+    name: uv run dev ci
+    needs: org-check
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout dev-cmd
+        uses: actions/checkout@v4
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run CI checks
+        run: uv run dev ci -- -vvs
