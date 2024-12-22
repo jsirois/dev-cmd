@@ -1,11 +1,13 @@
 # Copyright 2024 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from importlib import metadata
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from dev_cmd.errors import InvalidProjectError
 
@@ -23,7 +25,7 @@ except ImportError:
 class PyProjectToml:
     path: Path
 
-    def parse(self) -> Dict[str, Any]:
+    def parse(self) -> dict[str, Any]:
         try:
             with self.path.open("rb") as fp:
                 return toml.load(fp)
@@ -38,13 +40,13 @@ def find_pyproject_toml() -> PyProjectToml:
         dist_files = metadata.files("dev")
         if dist_files and any(module == dist_file.locate() for dist_file in dist_files):
             # N.B.: We're running from an installed package; so use the PWD as the search start.
-            start = Path().resolve()
+            start = Path()
     except PackageNotFoundError:
         # N.B.: We're being run directly from sources that are not installed or are installed in
         # editable mode.
         pass
 
-    candidate = start
+    candidate = start.resolve()
     while True:
         pyproject_toml = candidate / "pyproject.toml"
         if pyproject_toml.is_file():

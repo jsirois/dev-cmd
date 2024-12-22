@@ -1,33 +1,36 @@
 # Copyright 2024 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+from __future__ import annotations
+
 import os
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple, cast
+from pathlib import Path
+from typing import Any, Iterator, Mapping, cast
 
 from dev_cmd.errors import InvalidModelError
 from dev_cmd.model import Command, Dev
 from dev_cmd.project import PyProjectToml
 
 
-def _assert_list_str(obj: Any, *, path: str) -> List[str]:
+def _assert_list_str(obj: Any, *, path: str) -> list[str]:
     if not isinstance(obj, list) or not all(isinstance(item, str) for item in obj):
         raise InvalidModelError(
             f"Expected value at {path} to be a list of strings, but given: {obj} of type "
             f"{type(obj)}."
         )
-    return cast("List[str]", obj)
+    return cast("list[str]", obj)
 
 
-def _assert_dict_str_keys(obj: Any, *, path: str) -> Dict[str, Any]:
+def _assert_dict_str_keys(obj: Any, *, path: str) -> dict[str, Any]:
     if not isinstance(obj, dict) or not all(isinstance(key, str) for key in obj):
         raise InvalidModelError(
             f"Expected value at {path} to be a dict with string keys, but given: {obj} of type "
             f"{type(obj)}."
         )
-    return cast("Dict[str, Any]", obj)
+    return cast("dict[str, Any]", obj)
 
 
-def _parse_commands(commands: Optional[Dict[str, Any]]) -> Iterator[Command]:
+def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Iterator[Command]:
     if not commands:
         raise InvalidModelError(
             "There must be at least one entry in the [tool.dev-cmd.commands] table to run "
@@ -37,13 +40,14 @@ def _parse_commands(commands: Optional[Dict[str, Any]]) -> Iterator[Command]:
     for name, data in commands.items():
         env = os.environ.copy()
         if isinstance(data, list):
-            args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands.{name}]"))
+            args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands] `{name}`"))
+            cwd = project_dir
             accepts_extra_args = False
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
 
             for key, val in _assert_dict_str_keys(
-                command.pop("env", {}), path=f"[tool.dev-cmd.commands.{name}.env]"
+                command.pop("env", {}), path=f"[tool.dev-cmd.commands.{name}] `env`"
             ).items():
                 if not isinstance(val, str):
                     raise InvalidModelError(
@@ -55,7 +59,7 @@ def _parse_commands(commands: Optional[Dict[str, Any]]) -> Iterator[Command]:
             try:
                 args = tuple(
                     _assert_list_str(
-                        command.pop("args"), path=f"[tool.dev-cmd.commands.{name}.args]"
+                        command.pop("args"), path=f"[tool.dev-cmd.commands.{name}] `args`"
                     )
                 )
             except KeyError:
@@ -63,10 +67,20 @@ def _parse_commands(commands: Optional[Dict[str, Any]]) -> Iterator[Command]:
                     f"The [tool.dev-cmd.commands.{name}] table must define an `args` list."
                 )
 
+            cwd = Path(command.pop("cwd", project_dir))
+            if not cwd.is_absolute():
+                cwd = project_dir / cwd
+            cwd = cwd.resolve()
+            if not project_dir == Path(os.path.commonpath((project_dir, cwd))):
+                raise InvalidModelError(
+                    f"The resolved path of [tool.dev-cmd.commands.{name}] `cwd` lies outside the "
+                    f"project: {cwd}"
+                )
+
             accepts_extra_args = command.pop("accepts-extra-args", False)
             if not isinstance(accepts_extra_args, bool):
                 raise InvalidModelError(
-                    f"The [tool.dev-cmd.commands.{name}.accepts-extra-args] value must be either "
+                    f"The [tool.dev-cmd.commands.{name}] `accepts-extra-args` value must be either "
                     f"`true` or `false`, given: {accepts_extra_args} of type "
                     f"{type(accepts_extra_args)}."
                 )
@@ -75,27 +89,27 @@ def _parse_commands(commands: Optional[Dict[str, Any]]) -> Iterator[Command]:
                     f"Unexpected configuration keys in the [tool.dev-cmd.commands.{name}] table: "
                     f"{' '.join(data)}"
                 )
-        yield Command(name, env, args, accepts_extra_args=accepts_extra_args)
+        yield Command(name, env, args, cwd, accepts_extra_args=accepts_extra_args)
 
 
-def _parse_aliases(aliases: Optional[Dict[str, Any]]) -> Iterator[Tuple[str, Tuple[str, ...]]]:
+def _parse_aliases(aliases: dict[str, Any] | None) -> Iterator[tuple[str, tuple[str, ...]]]:
     if aliases:
         for alias, commands in aliases.items():
             yield alias, tuple(_assert_list_str(commands, path=f"[tool.dev-cmd.aliases.{alias}]"))
 
 
 def _parse_default(
-    default: Optional[Dict[str, Any]],
+    default: dict[str, Any] | None,
     commands: Mapping[str, Command],
-    aliases: Mapping[str, Tuple[Command, ...]],
-) -> Optional[Tuple[str, Tuple[Command, ...]]]:
+    aliases: Mapping[str, tuple[Command, ...]],
+) -> tuple[str, tuple[Command, ...]] | None:
     if not default:
         if len(commands) == 1:
             name, command = next(iter(commands.items()))
             return name, tuple([command])
         return None
 
-    default_commands: Optional[Tuple[str, Tuple[Command, ...]]] = None
+    default_commands: tuple[str, tuple[Command, ...]] | None = None
     alias = default.pop("alias", None)
     if alias:
         if not isinstance(alias, str):
@@ -137,21 +151,24 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
             f"[tool.dev-cmd] table in {pyproject_toml}: {e}"
         )
 
-    def pop_dict(key: str, *, path: str) -> Optional[Dict[str, Any]]:
+    def pop_dict(key: str, *, path: str) -> dict[str, Any] | None:
         data = run_dev_data.pop(key, None)
         return _assert_dict_str_keys(data, path=path) if data else None
 
     commands = {
         command.name: command
-        for command in _parse_commands(pop_dict("commands", path="[tool.dev-cmd.commands]"))
+        for command in _parse_commands(
+            pop_dict("commands", path="[tool.dev-cmd.commands]"),
+            project_dir=pyproject_toml.path.parent,
+        )
     }
-    aliases: Dict[str, Tuple[Command, ...]] = {}
+    aliases: dict[str, tuple[Command, ...]] = {}
     for alias, cmds in _parse_aliases(pop_dict("aliases", path="[tool.dev-cmd.aliases-]")):
         if alias in commands:
             raise InvalidModelError(
                 f"The alias name {alias!r} conflicts with a command of the same name."
             )
-        alias_cmds: List[Command] = []
+        alias_cmds: list[Command] = []
         for cmd in cmds:
             if cmd in commands:
                 alias_cmds.append(commands[cmd])
@@ -176,4 +193,4 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
             "configured to use the dev task runner."
         )
 
-    return Dev(default=default, commands=commands, aliases=aliases, source=pyproject_toml.path)
+    return Dev(commands=commands, aliases=aliases, default=default, source=pyproject_toml.path)

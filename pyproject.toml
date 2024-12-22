@@ -72,6 +72,26 @@ line-length = 100
 extend-select = ["I"]
 
 [tool.dev-cmd.commands]
+clean = [
+    "python",
+    "-c",
+    """\
+import os
+import shutil
+import sys
+
+import colors
+
+
+# The MyPy cache can get corrupted by swithing Pythons with `uv ... --python ...` and re-building
+# the .venv is cheap; so we clean these as a more restricted form than `git clean -fdx`
+for cache_dir in '.mypy_cache', '.venv':
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        print(colors.green(f"Removed directory `{cache_dir}`."), file=sys.stderr)
+    """
+]
+
 fmt = ["ruff", "format"]
 check-fmt = ["ruff", "format", "--diff"]
 
