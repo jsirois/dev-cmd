@@ -1,17 +1,19 @@
 # Copyright 2024 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
 from argparse import ArgumentParser
 from subprocess import CalledProcessError
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any, Iterable
 
 from colors import colors
 
 from dev_cmd import __version__
-from dev_cmd.errors import DevError, InvalidArgumentError
+from dev_cmd.errors import DevError, InvalidArgumentError, InvalidModelError
 from dev_cmd.model import Dev, Invocation
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.project import find_pyproject_toml
@@ -66,10 +68,14 @@ def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
             if extra_args and command.accepts_extra_args:
                 args.extend(extra_args)
 
-            subprocess.run(args, env=command.env, check=True)
+            if not os.path.exists(command.cwd):
+                raise InvalidModelError(
+                    f"The `cwd` for command {command.name!r} does not exist: {command.cwd}"
+                )
+            subprocess.run(args, env=command.env, cwd=command.cwd, check=True)
 
 
-def _parse_args() -> Tuple[List[str], List[str]]:
+def _parse_args() -> tuple[list[str], list[str]]:
     parser = ArgumentParser(
         description=(
             "A simple command runner to help running development tools easily and consistently."
@@ -83,12 +89,12 @@ def _parse_args() -> Tuple[List[str], List[str]]:
         help=(
             "One or more names of commands or aliases to run that are defined in the "
             "[tool.dev-cmd] section of `pyproject.toml`. If no tasks are passed and a "
-            "[tool.dev-cmd.default] is defined or there is only one command defined, that is run."
+            "[tool.dev-cmd] `default` is defined or there is only one command defined, that is run."
         ),
     )
 
-    args: List[str] = []
-    extra_args: Optional[List[str]] = None
+    args: list[str] = []
+    extra_args: list[str] | None = None
     for arg in sys.argv[1:]:
         if "--" == arg:
             extra_args = []
@@ -108,7 +114,7 @@ def main() -> Any:
         dev = parse_dev_config(pyproject_toml)
         return _run(dev, *tasks, extra_args=extra_args)
     except DevError as e:
-        return colors.yellow(str(e))
+        return f"{colors.red('Configuration error')}: {colors.yellow(str(e))}"
     except (OSError, CalledProcessError) as e:
         return colors.red(str(e))
 

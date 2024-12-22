@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
+from pathlib import PurePath
+from typing import Any, Iterable, Mapping
 
 from dev_cmd.errors import InvalidModelError
 
@@ -13,24 +14,25 @@ from dev_cmd.errors import InvalidModelError
 class Command:
     name: str
     env: Mapping[str, str]
-    args: Tuple[str, ...]
+    args: tuple[str, ...]
+    cwd: PurePath
     accepts_extra_args: bool
 
 
 @dataclass(frozen=True)
 class Dev:
     commands: Mapping[str, Command]
-    aliases: Mapping[str, Tuple[Command, ...]]
-    default: Optional[Tuple[str, Tuple[Command, ...]]] = None
+    aliases: Mapping[str, tuple[Command, ...]]
+    default: tuple[str, tuple[Command, ...]] | None = None
     source: Any = "<code>"
 
 
 @dataclass(frozen=True)
 class Invocation:
     @classmethod
-    def create(cls, *tasks: Tuple[str, Iterable[Command]]) -> Invocation:
-        _tasks: Dict[str, Tuple[Command, ...]] = {}
-        accepts_extra_args: Optional[Command] = None
+    def create(cls, *tasks: tuple[str, Iterable[Command]]) -> Invocation:
+        _tasks: dict[str, tuple[Command, ...]] = {}
+        accepts_extra_args: Command | None = None
         for task, commands in tasks:
             _tasks[task] = tuple(commands)
             for command in commands:
@@ -45,5 +47,5 @@ class Invocation:
 
         return cls(tasks=_tasks, accepts_extra_args=accepts_extra_args is not None)
 
-    tasks: Mapping[str, Tuple[Command, ...]]
+    tasks: Mapping[str, tuple[Command, ...]]
     accepts_extra_args: bool
