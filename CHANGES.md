@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.2.1
+
+Fix project root dir detection.
+
 ## 0.2.0
 
 Guarantee commands are run in the root project dir or else the custom
