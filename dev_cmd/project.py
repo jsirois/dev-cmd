@@ -37,7 +37,7 @@ def find_pyproject_toml() -> PyProjectToml:
     module = Path(__file__)
     start = module.parent
     try:
-        dist_files = metadata.files("dev")
+        dist_files = metadata.files("dev-cmd")
         if dist_files and any(module == dist_file.locate() for dist_file in dist_files):
             # N.B.: We're running from an installed package; so use the PWD as the search start.
             start = Path()
