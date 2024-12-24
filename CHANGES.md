@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.3.0
+
+Add support for parallelizing execution of commands in an alias.
+
 ## 0.2.1
 
 Fix project root dir detection.

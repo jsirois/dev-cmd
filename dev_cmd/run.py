@@ -3,20 +3,89 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
-import subprocess
 import sys
 from argparse import ArgumentParser
+from asyncio.subprocess import Process
 from subprocess import CalledProcessError
 from typing import Any, Iterable
 
+import aioconsole
 from colors import colors
 
 from dev_cmd import __version__
-from dev_cmd.errors import DevError, InvalidArgumentError, InvalidModelError
-from dev_cmd.model import Dev, Invocation
+from dev_cmd.errors import DevError, InvalidArgumentError, InvalidModelError, ParallelExecutionError
+from dev_cmd.model import Command, Dev, Invocation
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.project import find_pyproject_toml
+
+
+async def _invoke_command(command, extra_args, **subprocess_kwargs: Any) -> Process:
+    args = list(command.args)
+    if extra_args and command.accepts_extra_args:
+        args.extend(extra_args)
+    if not os.path.exists(command.cwd):
+        raise InvalidModelError(
+            f"The `cwd` for command {command.name!r} does not exist: {command.cwd}"
+        )
+    return await asyncio.create_subprocess_exec(
+        command.args[0], *command.args[1:], **subprocess_kwargs
+    )
+
+
+async def _invoke(invocation: Invocation, extra_args: Iterable[str] = ()) -> None:
+    for task, commands in invocation.tasks.items():
+        prefix = colors.cyan(f"dev-cmd {colors.bold(task)}]")
+        for command in commands:
+            if isinstance(command, Command):
+                await aioconsole.aprint(
+                    f"{prefix} {colors.magenta(f'Executing {colors.bold(command.name)}...')}",
+                    use_stderr=True,
+                )
+                process = await _invoke_command(command, extra_args)
+                returncode = await process.wait()
+                if returncode != 0:
+                    raise CalledProcessError(returncode=returncode, cmd=command.args)
+            else:
+                message = colors.magenta(
+                    f"Parallelizing {len(command)} commands: "
+                    f"{colors.bold(' '.join(cmd.name for cmd in command))}"
+                )
+                await aioconsole.aprint(f"{prefix} {message}...", use_stderr=True)
+                processes = [
+                    await _invoke_command(
+                        cmd,
+                        extra_args,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                    )
+                    for cmd in command
+                ]
+
+                errors: list[tuple[str, CalledProcessError]] = []
+                for cmd, process, (stdout, _) in zip(
+                    command,
+                    processes,
+                    await asyncio.gather(*[process.communicate() for process in processes]),
+                ):
+                    assert process.returncode is not None
+                    if process.returncode != 0:
+                        errors.append(
+                            (
+                                cmd.name,
+                                CalledProcessError(returncode=process.returncode, cmd=cmd.args),
+                            )
+                        )
+                    cmd_name = colors.color(
+                        cmd.name, fg="magenta" if process.returncode == 0 else "red", style="bold"
+                    )
+                    await aioconsole.aprint(f"{prefix} {cmd_name}:", use_stderr=True)
+                    await aioconsole.aprint(stdout.decode(), end="", use_stderr=True)
+                if errors:
+                    lines = [f"{len(errors)} of {len(command)} parallel commands in {task} failed:"]
+                    lines.extend(f"{cmd}: {error}" for cmd, error in errors)
+                    raise ParallelExecutionError(os.linesep.join(lines))
 
 
 def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
@@ -57,22 +126,7 @@ def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
             f"arguments: {extra_args}"
         )
 
-    for task, commands in invocation.tasks.items():
-        prefix = colors.cyan(f"dev-cmd {colors.bold(task)}]")
-        for command in commands:
-            print(
-                f"{prefix} {colors.magenta(f'Executing {colors.bold(command.name)}...')}",
-                file=sys.stderr,
-            )
-            args = list(command.args)
-            if extra_args and command.accepts_extra_args:
-                args.extend(extra_args)
-
-            if not os.path.exists(command.cwd):
-                raise InvalidModelError(
-                    f"The `cwd` for command {command.name!r} does not exist: {command.cwd}"
-                )
-            subprocess.run(args, env=command.env, cwd=command.cwd, check=True)
+    return asyncio.run(_invoke(invocation, extra_args))
 
 
 def _parse_args() -> tuple[list[str], list[str]]:
@@ -115,7 +169,7 @@ def main() -> Any:
         return _run(dev, *tasks, extra_args=extra_args)
     except DevError as e:
         return f"{colors.red('Configuration error')}: {colors.yellow(str(e))}"
-    except (OSError, CalledProcessError) as e:
+    except (OSError, CalledProcessError, ParallelExecutionError) as e:
         return colors.red(str(e))
 
 

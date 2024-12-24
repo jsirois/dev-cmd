@@ -16,3 +16,7 @@ class InvalidArgumentError(DevError):
 
 class InvalidModelError(DevError):
     """Indicates invalid dev command configuration."""
+
+
+class ParallelExecutionError(Exception):
+    """Conveys details of 2 or more failed parallel commands."""

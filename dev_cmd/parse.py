@@ -92,24 +92,51 @@ def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Itera
         yield Command(name, env, args, cwd, accepts_extra_args=accepts_extra_args)
 
 
-def _parse_aliases(aliases: dict[str, Any] | None) -> Iterator[tuple[str, tuple[str, ...]]]:
-    if aliases:
-        for alias, commands in aliases.items():
-            yield alias, tuple(_assert_list_str(commands, path=f"[tool.dev-cmd.aliases.{alias}]"))
+def _parse_aliases(
+    aliases: dict[str, Any] | None,
+) -> Iterator[tuple[str, tuple[str | tuple[str, ...], ...]]]:
+    if not aliases:
+        return
+
+    def iter_commands(alias: str, obj: Any) -> Iterator[str | tuple[str, ...]]:
+        if not isinstance(commands, list):
+            raise InvalidModelError(
+                f"Expected value at [tool.dev-cmd.aliases] `{alias}` to be a list containing "
+                f"strings or lists of strings, but given: {obj} of type {type(obj)}."
+            )
+
+        for index, item in enumerate(obj):
+            if isinstance(item, str):
+                yield item
+            elif isinstance(item, list):
+                if not all(isinstance(element, str) for element in item):
+                    raise InvalidModelError(
+                        f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a list "
+                        f"of strings, but given list with at least one non-string item: {item}."
+                    )
+                yield tuple(item)
+            else:
+                raise InvalidModelError(
+                    f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a string "
+                    f"or a list of strings, but given: {item} of type {type(item)}."
+                )
+
+    for alias, commands in aliases.items():
+        yield alias, tuple(iter_commands(alias, commands))
 
 
 def _parse_default(
     default: dict[str, Any] | None,
     commands: Mapping[str, Command],
-    aliases: Mapping[str, tuple[Command, ...]],
-) -> tuple[str, tuple[Command, ...]] | None:
+    aliases: Mapping[str, tuple[Command | tuple[Command, ...], ...]],
+) -> tuple[str, tuple[Command | tuple[Command, ...], ...]] | None:
     if not default:
         if len(commands) == 1:
             name, command = next(iter(commands.items()))
             return name, tuple([command])
         return None
 
-    default_commands: tuple[str, tuple[Command, ...]] | None = None
+    default_commands: tuple[str, tuple[Command | tuple[Command, ...], ...]] | None = None
     alias = default.pop("alias", None)
     if alias:
         if not isinstance(alias, str):
@@ -162,23 +189,41 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
             project_dir=pyproject_toml.path.parent,
         )
     }
-    aliases: dict[str, tuple[Command, ...]] = {}
-    for alias, cmds in _parse_aliases(pop_dict("aliases", path="[tool.dev-cmd.aliases-]")):
+    aliases: dict[str, tuple[Command | tuple[Command, ...], ...]] = {}
+    for alias, cmds in _parse_aliases(pop_dict("aliases", path="[tool.dev-cmd.aliases]")):
         if alias in commands:
             raise InvalidModelError(
                 f"The alias name {alias!r} conflicts with a command of the same name."
             )
-        alias_cmds: list[Command] = []
-        for cmd in cmds:
-            if cmd in commands:
-                alias_cmds.append(commands[cmd])
-            elif cmd in aliases:
-                alias_cmds.extend(aliases[cmd])
+        alias_cmds: list[Command | tuple[Command, ...]] = []
+        for index, cmd in enumerate(cmds):
+            if isinstance(cmd, str):
+                if cmd in commands:
+                    alias_cmds.append(commands[cmd])
+                elif cmd in aliases:
+                    alias_cmds.extend(aliases[cmd])
+                else:
+                    raise InvalidModelError(
+                        f"The task {cmd!r} defined in alias {alias!r} is neither a command nor a "
+                        f"previously defined alias."
+                    )
             else:
-                raise InvalidModelError(
-                    f"The task {cmd!r} defined in alias {alias!r} is neither a command nor a "
-                    f"previously defined alias."
-                )
+                parallel_cmds: list[Command] = []
+                for parallel_cmd in cmd:
+                    if parallel_cmd in commands:
+                        parallel_cmds.append(commands[parallel_cmd])
+                    elif parallel_cmd in aliases:
+                        raise InvalidModelError(
+                            f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a "
+                            f"list of command names, but {parallel_cmd!r} is an alias."
+                        )
+                    else:
+                        raise InvalidModelError(
+                            f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a "
+                            f"list of command names, but {parallel_cmd!r} is doesn't correspond "
+                            f"with any defined command."
+                        )
+                alias_cmds.append(tuple(parallel_cmds))
         aliases[alias] = tuple(alias_cmds)
 
     default = _parse_default(pop_dict("default", path="[tool.dev-cmd.default]"), commands, aliases)
