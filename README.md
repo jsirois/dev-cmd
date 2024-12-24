@@ -3,7 +3,7 @@
 [![PyPI Version](https://shields.io/pypi/v/dev-cmd.svg)](https://pypi.org/project/dev-cmd/)
 [![License](https://shields.io/pypi/l/dev-cmd.svg)](LICENSE)
 [![Supported Pythons](https://shields.io/pypi/pyversions/dev-cmd.svg)](pyproject.toml)
-[![CI](https://img.shields.io/github/actions/workflow/status/jsirois/dev-cmd/ci.yml)](https://github.com/jsirois/conscript/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/jsirois/dev-cmd/ci.yml)](https://github.com/jsirois/dev-cmd/actions/workflows/ci.yml)
 
 The `dev-cmd` tool provides a simple way to define commands in `pyproject.toml` to develop your
 project with and then execute them.
