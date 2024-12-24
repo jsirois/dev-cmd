@@ -58,7 +58,7 @@ def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
         )
 
     for task, commands in invocation.tasks.items():
-        prefix = colors.cyan(f"dev run {colors.bold(task)}]")
+        prefix = colors.cyan(f"dev-cmd {colors.bold(task)}]")
         for command in commands:
             print(
                 f"{prefix} {colors.magenta(f'Executing {colors.bold(command.name)}...')}",
