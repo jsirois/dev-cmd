@@ -21,7 +21,9 @@ from dev_cmd.parse import parse_dev_config
 from dev_cmd.project import find_pyproject_toml
 
 
-async def _invoke_command(command, extra_args, **subprocess_kwargs: Any) -> Process:
+async def _invoke_command(
+    command: Command, extra_args: Iterable[str] = (), **subprocess_kwargs: Any
+) -> Process:
     args = list(command.args)
     if extra_args and command.accepts_extra_args:
         args.extend(extra_args)
@@ -30,7 +32,7 @@ async def _invoke_command(command, extra_args, **subprocess_kwargs: Any) -> Proc
             f"The `cwd` for command {command.name!r} does not exist: {command.cwd}"
         )
     return await asyncio.create_subprocess_exec(
-        command.args[0], *command.args[1:], **subprocess_kwargs
+        command.args[0], *command.args[1:], cwd=command.cwd, env=command.env, **subprocess_kwargs
     )
 
 
