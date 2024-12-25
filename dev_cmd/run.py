@@ -94,7 +94,7 @@ def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
     if tasks:
         try:
             invocation = Invocation.create(
-                *[(task, (dev.aliases.get(task) or [dev.commands[task]])) for task in tasks]
+                *[(task, (dev.tasks.get(task) or [dev.commands[task]])) for task in tasks]
             )
         except KeyError as e:
             raise InvalidArgumentError(
@@ -102,7 +102,7 @@ def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
                     (
                         f"A requested task is not defined in {dev.source}: {e}",
                         "",
-                        f"Available aliases: {' '.join(sorted(dev.aliases))}",
+                        f"Available tasks: {' '.join(sorted(dev.tasks))}",
                         f"Available commands: {' '.join(sorted(dev.commands))}",
                     )
                 )
@@ -114,9 +114,9 @@ def _run(dev: Dev, *tasks: str, extra_args: Iterable[str] = ()) -> None:
         raise InvalidArgumentError(
             os.linesep.join(
                 (
-                    f"usage: {sys.argv[0]} alias|cmd [alias|cmd...]",
+                    f"usage: {sys.argv[0]} task|cmd [task|cmd...]",
                     "",
-                    f"Available aliases: {' '.join(sorted(dev.aliases))}",
+                    f"Available tasks: {' '.join(sorted(dev.tasks))}",
                     f"Available commands: {' '.join(sorted(dev.commands))}",
                 )
             )
@@ -141,9 +141,9 @@ def _parse_args() -> tuple[list[str], list[str]]:
     parser.add_argument(
         "tasks",
         nargs="*",
-        metavar="cmd|alias",
+        metavar="cmd|task",
         help=(
-            "One or more names of commands or aliases to run that are defined in the "
+            "One or more names of commands or tasks to run that are defined in the "
             "[tool.dev-cmd] section of `pyproject.toml`. If no tasks are passed and a "
             "[tool.dev-cmd] `default` is defined or there is only one command defined, that is run."
         ),

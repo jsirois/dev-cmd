@@ -22,7 +22,7 @@ class Command:
 @dataclass(frozen=True)
 class Dev:
     commands: Mapping[str, Command]
-    aliases: Mapping[str, tuple[Command | tuple[Command, ...], ...]]
+    tasks: Mapping[str, tuple[Command | tuple[Command, ...], ...]]
     default: tuple[str, tuple[Command | tuple[Command, ...], ...]] | None = None
     source: Any = "<code>"
 

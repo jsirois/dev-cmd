@@ -33,4 +33,4 @@ def test_invocation_create_multiple_extra_args():
             r"invocation and command 'foo' already does."
         ),
     ):
-        Invocation.create(("alias", [foo, bar]))
+        Invocation.create(("task", [foo, bar]))

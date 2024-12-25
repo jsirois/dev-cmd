@@ -92,16 +92,16 @@ def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Itera
         yield Command(name, env, args, cwd, accepts_extra_args=accepts_extra_args)
 
 
-def _parse_aliases(
-    aliases: dict[str, Any] | None,
+def _parse_tasks(
+    tasks: dict[str, Any] | None,
 ) -> Iterator[tuple[str, tuple[str | tuple[str, ...], ...]]]:
-    if not aliases:
+    if not tasks:
         return
 
-    def iter_commands(alias: str, obj: Any) -> Iterator[str | tuple[str, ...]]:
+    def iter_commands(task: str, obj: Any) -> Iterator[str | tuple[str, ...]]:
         if not isinstance(commands, list):
             raise InvalidModelError(
-                f"Expected value at [tool.dev-cmd.aliases] `{alias}` to be a list containing "
+                f"Expected value at [tool.dev-cmd.tasks] `{task}` to be a list containing "
                 f"strings or lists of strings, but given: {obj} of type {type(obj)}."
             )
 
@@ -111,24 +111,24 @@ def _parse_aliases(
             elif isinstance(item, list):
                 if not all(isinstance(element, str) for element in item):
                     raise InvalidModelError(
-                        f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a list "
+                        f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a list "
                         f"of strings, but given list with at least one non-string item: {item}."
                     )
                 yield tuple(item)
             else:
                 raise InvalidModelError(
-                    f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a string "
+                    f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a string "
                     f"or a list of strings, but given: {item} of type {type(item)}."
                 )
 
-    for alias, commands in aliases.items():
-        yield alias, tuple(iter_commands(alias, commands))
+    for task, commands in tasks.items():
+        yield task, tuple(iter_commands(task, commands))
 
 
 def _parse_default(
     default: dict[str, Any] | None,
     commands: Mapping[str, Command],
-    aliases: Mapping[str, tuple[Command | tuple[Command, ...], ...]],
+    tasks: Mapping[str, tuple[Command | tuple[Command, ...], ...]],
 ) -> tuple[str, tuple[Command | tuple[Command, ...], ...]] | None:
     if not default:
         if len(commands) == 1:
@@ -137,23 +137,23 @@ def _parse_default(
         return None
 
     default_commands: tuple[str, tuple[Command | tuple[Command, ...], ...]] | None = None
-    alias = default.pop("alias", None)
-    if alias:
-        if not isinstance(alias, str):
+    task = default.pop("task", None)
+    if task:
+        if not isinstance(task, str):
             raise InvalidModelError(
-                f"Expected default alias to be a string but given: {alias} of type {type(alias)}."
+                f"Expected default task to be a string but given: {task} of type {type(task)}."
             )
         try:
-            default_commands = alias, aliases[alias]
+            default_commands = task, tasks[task]
         except KeyError:
-            raise InvalidModelError(f"The default alias {alias!r} is not defined.")
+            raise InvalidModelError(f"The default task {task!r} is not defined.")
     else:
         command = default.pop("command", None)
         if command:
             if not isinstance(command, str):
                 raise InvalidModelError(
-                    f"Expected default command to be a string but given: {alias} of type "
-                    f"{type(alias)}."
+                    f"Expected default command to be a string but given: {task} of type "
+                    f"{type(task)}."
                 )
             try:
                 default_commands = command, tuple([commands[command]])
@@ -174,7 +174,7 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
         )  # type: ignore[index]
     except KeyError as e:
         raise InvalidModelError(
-            f"The commands, aliases and defaults run-dev acts upon must be defined in the "
+            f"The commands, tasks and defaults run-dev acts upon must be defined in the "
             f"[tool.dev-cmd] table in {pyproject_toml}: {e}"
         )
 
@@ -189,44 +189,44 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
             project_dir=pyproject_toml.path.parent,
         )
     }
-    aliases: dict[str, tuple[Command | tuple[Command, ...], ...]] = {}
-    for alias, cmds in _parse_aliases(pop_dict("aliases", path="[tool.dev-cmd.aliases]")):
-        if alias in commands:
+    tasks: dict[str, tuple[Command | tuple[Command, ...], ...]] = {}
+    for task, cmds in _parse_tasks(pop_dict("tasks", path="[tool.dev-cmd.tasks]")):
+        if task in commands:
             raise InvalidModelError(
-                f"The alias name {alias!r} conflicts with a command of the same name."
+                f"The task name {task!r} conflicts with a command of the same name."
             )
-        alias_cmds: list[Command | tuple[Command, ...]] = []
+        task_cmds: list[Command | tuple[Command, ...]] = []
         for index, cmd in enumerate(cmds):
             if isinstance(cmd, str):
                 if cmd in commands:
-                    alias_cmds.append(commands[cmd])
-                elif cmd in aliases:
-                    alias_cmds.extend(aliases[cmd])
+                    task_cmds.append(commands[cmd])
+                elif cmd in tasks:
+                    task_cmds.extend(tasks[cmd])
                 else:
                     raise InvalidModelError(
-                        f"The task {cmd!r} defined in alias {alias!r} is neither a command nor a "
-                        f"previously defined alias."
+                        f"The task {cmd!r} defined in task {task!r} is neither a command nor a "
+                        f"previously defined task."
                     )
             else:
                 parallel_cmds: list[Command] = []
                 for parallel_cmd in cmd:
                     if parallel_cmd in commands:
                         parallel_cmds.append(commands[parallel_cmd])
-                    elif parallel_cmd in aliases:
+                    elif parallel_cmd in tasks:
                         raise InvalidModelError(
-                            f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a "
-                            f"list of command names, but {parallel_cmd!r} is an alias."
+                            f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a "
+                            f"list of command names, but {parallel_cmd!r} is an task."
                         )
                     else:
                         raise InvalidModelError(
-                            f"Expected value at [tool.dev-cmd.aliases] `{alias}`[{index}] to be a "
+                            f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a "
                             f"list of command names, but {parallel_cmd!r} is doesn't correspond "
                             f"with any defined command."
                         )
-                alias_cmds.append(tuple(parallel_cmds))
-        aliases[alias] = tuple(alias_cmds)
+                task_cmds.append(tuple(parallel_cmds))
+        tasks[task] = tuple(task_cmds)
 
-    default = _parse_default(pop_dict("default", path="[tool.dev-cmd.default]"), commands, aliases)
+    default = _parse_default(pop_dict("default", path="[tool.dev-cmd.default]"), commands, tasks)
 
     if run_dev_data:
         raise InvalidModelError(
@@ -238,4 +238,4 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
             "configured to use the dev task runner."
         )
 
-    return Dev(commands=commands, aliases=aliases, default=default, source=pyproject_toml.path)
+    return Dev(commands=commands, tasks=tasks, default=default, source=pyproject_toml.path)

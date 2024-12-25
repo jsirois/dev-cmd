@@ -6,7 +6,7 @@ Fix regression in cwd and env support for commands.
 
 ## 0.3.0
 
-Add support for parallelizing execution of commands in an alias.
+Add support for parallelizing execution of commands in an task.
 
 ## 0.2.1
 

@@ -116,7 +116,7 @@ type-check-313 = ["mypy", "--python-version",  "3.13", "dev_cmd", "tests"]
 args = ["pytest", "-n", "auto"]
 accepts-extra-args = true
 
-[tool.dev-cmd.aliases]
+[tool.dev-cmd.tasks]
 checks = [
     "fmt",
     "lint",
@@ -131,4 +131,4 @@ ci = [
 ]
 
 [tool.dev-cmd.default]
-alias = "checks"
+task = "checks"
