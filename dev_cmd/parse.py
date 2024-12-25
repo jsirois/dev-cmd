@@ -126,7 +126,7 @@ def _parse_tasks(
 
 
 def _parse_default(
-    default: dict[str, Any] | None,
+    default: Any,
     commands: Mapping[str, Command],
     tasks: Mapping[str, tuple[Command | tuple[Command, ...], ...]],
 ) -> tuple[str, tuple[Command | tuple[Command, ...], ...]] | None:
@@ -136,40 +136,23 @@ def _parse_default(
             return name, tuple([command])
         return None
 
-    default_commands: tuple[str, tuple[Command | tuple[Command, ...], ...]] | None = None
-    task = default.pop("task", None)
-    if task:
-        if not isinstance(task, str):
-            raise InvalidModelError(
-                f"Expected default task to be a string but given: {task} of type {type(task)}."
-            )
-        try:
-            default_commands = task, tasks[task]
-        except KeyError:
-            raise InvalidModelError(f"The default task {task!r} is not defined.")
-    else:
-        command = default.pop("command", None)
-        if command:
-            if not isinstance(command, str):
-                raise InvalidModelError(
-                    f"Expected default command to be a string but given: {task} of type "
-                    f"{type(task)}."
-                )
-            try:
-                default_commands = command, tuple([commands[command]])
-            except KeyError:
-                raise InvalidModelError(f"The default command {command!r} is not defined.")
-    if default:
+    if not isinstance(default, str):
         raise InvalidModelError(
-            f"Unexpected configuration keys in the default table: {' '.join(default)}"
+            f"Expected default to be a string but given: {default} of type {type(default)}."
         )
-    return default_commands
+
+    try:
+        return default, (tasks.get(default) or tuple([commands[default]]))
+    except KeyError:
+        raise InvalidModelError(
+            f"The default {default!r} is not the name of a defined command or task."
+        )
 
 
 def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
     pyproject_data = pyproject_toml.parse()
     try:
-        run_dev_data = _assert_dict_str_keys(
+        dev_cmd_data = _assert_dict_str_keys(
             pyproject_data["tool"]["dev-cmd"], path="[tool.dev-cmd]"
         )  # type: ignore[index]
     except KeyError as e:
@@ -179,7 +162,7 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
         )
 
     def pop_dict(key: str, *, path: str) -> dict[str, Any] | None:
-        data = run_dev_data.pop(key, None)
+        data = dev_cmd_data.pop(key, None)
         return _assert_dict_str_keys(data, path=path) if data else None
 
     commands = {
@@ -226,11 +209,11 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
                 task_cmds.append(tuple(parallel_cmds))
         tasks[task] = tuple(task_cmds)
 
-    default = _parse_default(pop_dict("default", path="[tool.dev-cmd.default]"), commands, tasks)
+    default = _parse_default(dev_cmd_data.pop("default", None), commands, tasks)
 
-    if run_dev_data:
+    if dev_cmd_data:
         raise InvalidModelError(
-            f"Unexpected configuration keys in the [tool.dev-cmd] table: {' '.join(run_dev_data)}"
+            f"Unexpected configuration keys in the [tool.dev-cmd] table: {' '.join(dev_cmd_data)}"
         )
     if not commands:
         raise InvalidModelError(

@@ -59,7 +59,6 @@ include = ["dev_cmd*"]
 dev = [
     "mypy",
     "pytest",
-    "pytest-xdist",
     "ruff",
     "types-tqdm",
 ]
@@ -113,22 +112,26 @@ type-check-312 = ["mypy", "--python-version", "3.12", "dev_cmd", "tests"]
 type-check-313 = ["mypy", "--python-version",  "3.13", "dev_cmd", "tests"]
 
 [tool.dev-cmd.commands.test]
-args = ["pytest", "-n", "auto"]
+args = ["pytest"]
+cwd = "tests"
 accepts-extra-args = true
 
 [tool.dev-cmd.tasks]
 checks = [
     "fmt",
     "lint",
-    # Parallelizing the type checks is safe (they don't modify files), and it nets a ~30% speedup
-    # over running them all serially.
-    ["type-check-39", "type-check-310", "type-check-311", "type-check-312", "type-check-313"],
-    "test"
+    # Parallelizing the type checks and test is safe (they don't modify files), and it nets a 3x
+    # speedup over running them all serially.
+    [
+        "type-check-39",
+        "type-check-310",
+        "type-check-311",
+        "type-check-312",
+        "type-check-313",
+        "test"
+    ],
 ]
-ci = [
-    ["check-fmt", "check-lint", "type-check"],
-    "test"
-]
+ci = [["check-fmt", "check-lint", "type-check", "test"]]
 
-[tool.dev-cmd.default]
-task = "checks"
+[tool.dev-cmd]
+default = "checks"

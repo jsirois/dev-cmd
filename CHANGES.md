@@ -1,5 +1,13 @@
 # Release Notes
 
+## 0.4.0
+
+Breaking pre-1.0 changes:
++ `[tool.dev-cmd.aliases]` is now named `[tool.dev-cmd.tasks]`.
++ The default task or command is now specified with the `default` key in
+  the `[tool.dev-cmd] table. The key is just the name for the task or
+  command that should be default.
+
 ## 0.3.1
 
 Fix regression in cwd and env support for commands.
