@@ -15,9 +15,9 @@ try:
     import tomllib as toml  # type: ignore[import-not-found]
     from tomllib import TOMLDecodeError as TOMLError  # type: ignore[import-not-found]
 except ImportError:
-    import tomlkit as toml  # type: ignore[import-not-found,no-redef]
-    from tomlkit.exceptions import (  # type: ignore[import-not-found,no-redef,assignment]
-        TOMLKitError as TOMLError,
+    import tomli as toml  # type: ignore[import-not-found,no-redef]
+    from tomli import (  # type: ignore[import-not-found,no-redef,assignment]
+        TOMLDecodeError as TOMLError,
     )
 
 
