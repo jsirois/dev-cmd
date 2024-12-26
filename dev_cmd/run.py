@@ -8,6 +8,7 @@ import os
 import sys
 from argparse import ArgumentParser
 from asyncio.subprocess import Process
+from functools import cache
 from subprocess import CalledProcessError
 from typing import Any, Iterable
 
@@ -21,18 +22,48 @@ from dev_cmd.parse import parse_dev_config
 from dev_cmd.project import find_pyproject_toml
 
 
+@cache
+def _is_color() -> bool:
+    # Used in Python 3.13+
+    python_colors = os.environ.get("PYTHON_COLORS")
+    if python_colors in ("0", "1"):
+        return python_colors == "1"
+
+    # A common convention; see: https://no-color.org/
+    if "NO_COLOR" in os.environ:
+        return False
+
+    # A less common convention; see: https://force-color.org/
+    if "FORCE_COLOR" in os.environ:
+        return True
+
+    return sys.stderr.isatty() and "dumb" != os.environ.get("TERM")
+
+
 async def _invoke_command(
     command: Command, extra_args: Iterable[str] = (), **subprocess_kwargs: Any
 ) -> Process:
     args = list(command.args)
     if extra_args and command.accepts_extra_args:
         args.extend(extra_args)
+
     if not os.path.exists(command.cwd):
         raise InvalidModelError(
             f"The `cwd` for command {command.name!r} does not exist: {command.cwd}"
         )
+
+    env = dict(command.env)
+    if _is_color() and not any(
+        color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR", "FORCE_COLOR")
+    ):
+        env["FORCE_COLOR"] = "1"
+
     return await asyncio.create_subprocess_exec(
-        command.args[0], *command.args[1:], cwd=command.cwd, env=command.env, **subprocess_kwargs
+        args[0],
+        *args[1:],
+        cwd=command.cwd,
+        env=env,
+        **subprocess_kwargs,
     )
 
 
@@ -55,32 +86,29 @@ async def _invoke(invocation: Invocation, extra_args: Iterable[str] = ()) -> Non
                     f"{colors.bold(' '.join(cmd.name for cmd in command))}"
                 )
                 await aioconsole.aprint(f"{prefix} {message}...", use_stderr=True)
-                processes = [
-                    await _invoke_command(
-                        cmd,
+
+                async def invoke(_cmd: Command) -> tuple[Command, int, bytes]:
+                    proc = await _invoke_command(
+                        _cmd,
                         extra_args,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.STDOUT,
                     )
-                    for cmd in command
-                ]
+                    output, _ = await proc.communicate()
+                    return _cmd, await proc.wait(), output
 
                 errors: list[tuple[str, CalledProcessError]] = []
-                for cmd, process, (stdout, _) in zip(
-                    command,
-                    processes,
-                    await asyncio.gather(*[process.communicate() for process in processes]),
-                ):
-                    assert process.returncode is not None
-                    if process.returncode != 0:
+                for invoked in asyncio.as_completed(map(invoke, command)):
+                    cmd, returncode, stdout = await invoked
+                    if returncode != 0:
                         errors.append(
                             (
                                 cmd.name,
-                                CalledProcessError(returncode=process.returncode, cmd=cmd.args),
+                                CalledProcessError(returncode=returncode, cmd=cmd.args),
                             )
                         )
                     cmd_name = colors.color(
-                        cmd.name, fg="magenta" if process.returncode == 0 else "red", style="bold"
+                        cmd.name, fg="magenta" if returncode == 0 else "red", style="bold"
                     )
                     await aioconsole.aprint(f"{prefix} {cmd_name}:", use_stderr=True)
                     await aioconsole.aprint(stdout.decode(), end="", use_stderr=True)

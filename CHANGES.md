@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.4.1
+
+Several parallelization fixes:
++ Restore color support.
++ Restore `accepts-extra-args` support.
++ Complete parallel tasks incrementally.
+
 ## 0.4.0
 
 Breaking pre-1.0 changes:
