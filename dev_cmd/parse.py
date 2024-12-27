@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Iterator, Mapping, cast
+from typing import Any, Container, Iterator, Mapping, cast
 
 from dev_cmd.errors import InvalidModelError
-from dev_cmd.model import Command, Dev
+from dev_cmd.model import Command, Dev, Group, Task
 from dev_cmd.project import PyProjectToml
 
 
@@ -38,7 +38,7 @@ def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Itera
         )
 
     for name, data in commands.items():
-        env = os.environ.copy()
+        extra_env: list[tuple[str, str]] = []
         if isinstance(data, list):
             args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands] `{name}`"))
             cwd = project_dir
@@ -54,7 +54,7 @@ def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Itera
                         f"The env variable {key} must be a string, but given: {val} of type "
                         f"{type(val)}."
                     )
-                env[key] = val
+                extra_env.append((key, val))
 
             try:
                 args = tuple(
@@ -89,51 +89,95 @@ def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Itera
                     f"Unexpected configuration keys in the [tool.dev-cmd.commands.{name}] table: "
                     f"{' '.join(data)}"
                 )
-        yield Command(name, env, args, cwd, accepts_extra_args=accepts_extra_args)
+        yield Command(
+            name, args, extra_env=tuple(extra_env), cwd=cwd, accepts_extra_args=accepts_extra_args
+        )
 
 
-def _parse_tasks(
-    tasks: dict[str, Any] | None,
-) -> Iterator[tuple[str, tuple[str | tuple[str, ...], ...]]]:
+def _parse_group(
+    task: str,
+    group: list[Any],
+    all_task_names: Container[str],
+    tasks_defined_so_far: Mapping[str, Task],
+    commands: Mapping[str, Command],
+) -> Group:
+    members: list[Command | Task | Group] = []
+    for index, member in enumerate(group):
+        if isinstance(member, str):
+            try:
+                members.append(commands.get(member) or tasks_defined_so_far[member])
+            except KeyError:
+                if member in all_task_names:
+                    raise InvalidModelError(
+                        f"The [tool.dev-cmd.tasks] step `{task}[{index}]` forward-references task "
+                        f"{member!r}. Tasks can only reference other tasks that are defined "
+                        f"earlier in the file"
+                    )
+                raise InvalidModelError(
+                    os.linesep.join(
+                        (
+                            f"The [tool.dev-cmd.tasks] step `{task}[{index}]` is not the name of a "
+                            f"defined command or task: {member!r}",
+                            "",
+                            f"Available tasks: {' '.join(sorted(tasks_defined_so_far)) if tasks_defined_so_far else '<None>'}",
+                            f"Available commands: {' '.join(sorted(commands))}",
+                        )
+                    )
+                )
+        elif isinstance(member, list):
+            members.append(
+                _parse_group(
+                    task=f"{task}[{index}]",
+                    group=member,
+                    all_task_names=all_task_names,
+                    tasks_defined_so_far=tasks_defined_so_far,
+                    commands=commands,
+                )
+            )
+        else:
+            raise InvalidModelError(
+                f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a string "
+                f"or a list of strings, but given: {member} of type {type(member)}."
+            )
+    return Group(members=tuple(members))
+
+
+def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) -> Iterator[Task]:
     if not tasks:
         return
 
-    def iter_commands(task: str, obj: Any) -> Iterator[str | tuple[str, ...]]:
-        if not isinstance(commands, list):
+    tasks_by_name: dict[str, Task] = {}
+    for name, group in tasks.items():
+        if name in commands:
             raise InvalidModelError(
-                f"Expected value at [tool.dev-cmd.tasks] `{task}` to be a list containing "
-                f"strings or lists of strings, but given: {obj} of type {type(obj)}."
+                f"The task {name!r} collides with command {name!r}. Tasks and commands share the "
+                f"same namespace and the names must be unique."
             )
-
-        for index, item in enumerate(obj):
-            if isinstance(item, str):
-                yield item
-            elif isinstance(item, list):
-                if not all(isinstance(element, str) for element in item):
-                    raise InvalidModelError(
-                        f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a list "
-                        f"of strings, but given list with at least one non-string item: {item}."
-                    )
-                yield tuple(item)
-            else:
-                raise InvalidModelError(
-                    f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a string "
-                    f"or a list of strings, but given: {item} of type {type(item)}."
-                )
-
-    for task, commands in tasks.items():
-        yield task, tuple(iter_commands(task, commands))
+        if not isinstance(group, list):
+            raise InvalidModelError(
+                f"Expected value at [tool.dev-cmd.tasks] `{name}` to be a list containing "
+                f"strings or lists of strings, but given: {group} of type {type(group)}."
+            )
+        task = Task(
+            name=name,
+            steps=_parse_group(
+                task=name,
+                group=group,
+                all_task_names=frozenset(tasks),
+                tasks_defined_so_far=tasks_by_name,
+                commands=commands,
+            ),
+        )
+        tasks_by_name[name] = task
+        yield task
 
 
 def _parse_default(
-    default: Any,
-    commands: Mapping[str, Command],
-    tasks: Mapping[str, tuple[Command | tuple[Command, ...], ...]],
-) -> tuple[str, tuple[Command | tuple[Command, ...], ...]] | None:
+    default: Any, commands: Mapping[str, Command], tasks: Mapping[str, Task]
+) -> Command | Task | None:
     if not default:
         if len(commands) == 1:
-            name, command = next(iter(commands.items()))
-            return name, tuple([command])
+            return next(iter(commands.values()))
         return None
 
     if not isinstance(default, str):
@@ -142,10 +186,17 @@ def _parse_default(
         )
 
     try:
-        return default, (tasks.get(default) or tuple([commands[default]]))
+        return tasks.get(default) or commands[default]
     except KeyError:
         raise InvalidModelError(
-            f"The default {default!r} is not the name of a defined command or task."
+            os.linesep.join(
+                (
+                    f"The default {default!r} is not the name of a defined command or task.",
+                    "",
+                    f"Available tasks: {' '.join(sorted(tasks)) if tasks else '<None>'}",
+                    f"Available commands: {' '.join(sorted(commands))}",
+                )
+            )
         )
 
 
@@ -166,59 +217,32 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
         return _assert_dict_str_keys(data, path=path) if data else None
 
     commands = {
-        command.name: command
-        for command in _parse_commands(
+        cmd.name: cmd
+        for cmd in _parse_commands(
             pop_dict("commands", path="[tool.dev-cmd.commands]"),
             project_dir=pyproject_toml.path.parent,
         )
     }
-    tasks: dict[str, tuple[Command | tuple[Command, ...], ...]] = {}
-    for task, cmds in _parse_tasks(pop_dict("tasks", path="[tool.dev-cmd.tasks]")):
-        if task in commands:
-            raise InvalidModelError(
-                f"The task name {task!r} conflicts with a command of the same name."
-            )
-        task_cmds: list[Command | tuple[Command, ...]] = []
-        for index, cmd in enumerate(cmds):
-            if isinstance(cmd, str):
-                if cmd in commands:
-                    task_cmds.append(commands[cmd])
-                elif cmd in tasks:
-                    task_cmds.extend(tasks[cmd])
-                else:
-                    raise InvalidModelError(
-                        f"The task {cmd!r} defined in task {task!r} is neither a command nor a "
-                        f"previously defined task."
-                    )
-            else:
-                parallel_cmds: list[Command] = []
-                for parallel_cmd in cmd:
-                    if parallel_cmd in commands:
-                        parallel_cmds.append(commands[parallel_cmd])
-                    elif parallel_cmd in tasks:
-                        raise InvalidModelError(
-                            f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a "
-                            f"list of command names, but {parallel_cmd!r} is an task."
-                        )
-                    else:
-                        raise InvalidModelError(
-                            f"Expected value at [tool.dev-cmd.tasks] `{task}`[{index}] to be a "
-                            f"list of command names, but {parallel_cmd!r} is doesn't correspond "
-                            f"with any defined command."
-                        )
-                task_cmds.append(tuple(parallel_cmds))
-        tasks[task] = tuple(task_cmds)
-
-    default = _parse_default(dev_cmd_data.pop("default", None), commands, tasks)
-
-    if dev_cmd_data:
-        raise InvalidModelError(
-            f"Unexpected configuration keys in the [tool.dev-cmd] table: {' '.join(dev_cmd_data)}"
-        )
     if not commands:
         raise InvalidModelError(
             "No commands are defined in the [tool.dev-cmd.commands] table. At least one must be "
             "configured to use the dev task runner."
         )
 
-    return Dev(commands=commands, tasks=tasks, default=default, source=pyproject_toml.path)
+    tasks = {
+        task.name: task
+        for task in _parse_tasks(pop_dict("tasks", path="[tool.dev-cmd.tasks]"), commands)
+    }
+    default = _parse_default(dev_cmd_data.pop("default", None), commands, tasks)
+
+    if dev_cmd_data:
+        raise InvalidModelError(
+            f"Unexpected configuration keys in the [tool.dev-cmd] table: {' '.join(dev_cmd_data)}"
+        )
+
+    return Dev(
+        commands=tuple(commands.values()),
+        tasks=tuple(tasks.values()),
+        default=default,
+        source=pyproject_toml.path,
+    )

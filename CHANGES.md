@@ -1,5 +1,17 @@
 # Release Notes
 
+## 0.5.0
+
+Add support for `--color` choice and respect ambient color setting when there is not `--color`
+choice.
+
+Add support for `-p` / `--parallel` to request all top-level commands and tasks requested on the
+command line be run in parallel.
+
+Also, re-work task parallelization to be more robust and general. Now sub-lists in a task definition
+are either run in parallel or serial depending on their nesting depth, which can be arbitrarily
+deep. The 1st level, the task list itself, is run in serial to seed the alternation.
+
 ## 0.4.1
 
 Several parallelization fixes:

@@ -1,31 +1,31 @@
 # Copyright 2024 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
-from pathlib import PurePath
 
 import pytest
 
 from dev_cmd.errors import InvalidModelError
-from dev_cmd.model import Command, Invocation
+from dev_cmd.invoke import Invocation
+from dev_cmd.model import Command, Group, Task
 
 
 def test_invocation_create_no_extra_args():
-    command = Command("foo", env={}, args=(), cwd=PurePath(), accepts_extra_args=False)
-    invocation = Invocation.create(("foo", [command]))
+    command = Command("foo", args=())
+    invocation = Invocation.create(command)
     assert not invocation.accepts_extra_args
-    assert {"foo": (command,)} == invocation.tasks
+    assert (Task("foo", Group((command,))),) == invocation.tasks
 
 
 def test_invocation_create_accepts_extra_args():
-    foo = Command("foo", env={}, args=(), cwd=PurePath(), accepts_extra_args=True)
-    bar = Command("bar", env={}, args=(), cwd=PurePath(), accepts_extra_args=False)
-    invocation = Invocation.create(("foo", [foo]), ("bar", [bar]))
+    foo = Command("foo", args=(), accepts_extra_args=True)
+    bar = Command("bar", args=(), accepts_extra_args=False)
+    invocation = Invocation.create(foo, bar)
     assert invocation.accepts_extra_args
-    assert {"foo": (foo,), "bar": (bar,)} == invocation.tasks
+    assert (Task("foo", Group((foo,))), Task("bar", Group((bar,)))) == invocation.tasks
 
 
 def test_invocation_create_multiple_extra_args():
-    foo = Command("foo", env={}, args=(), cwd=PurePath(), accepts_extra_args=True)
-    bar = Command("bar", env={}, args=(), cwd=PurePath(), accepts_extra_args=True)
+    foo = Command("foo", args=(), accepts_extra_args=True)
+    bar = Command("bar", args=(), accepts_extra_args=True)
     with pytest.raises(
         InvalidModelError,
         match=(
@@ -33,4 +33,4 @@ def test_invocation_create_multiple_extra_args():
             r"invocation and command 'foo' already does."
         ),
     ):
-        Invocation.create(("task", [foo, bar]))
+        Invocation.create(foo, bar)

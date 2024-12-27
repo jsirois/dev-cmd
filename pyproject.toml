@@ -120,7 +120,7 @@ accepts-extra-args = true
 checks = [
     "fmt",
     "lint",
-    # Parallelizing the type checks and test is safe (they don't modify files), and it nets a 3x
+    # Parallelizing the type checks and test is safe (they don't modify files), and it nets a ~3x
     # speedup over running them all serially.
     [
         "type-check-39",
@@ -131,6 +131,8 @@ checks = [
         "test"
     ],
 ]
+
+# None of the CI checks modify files; so they can all be run in parallel which nets a ~1.5x speedup.
 ci = [["check-fmt", "check-lint", "type-check", "test"]]
 
 [tool.dev-cmd]
