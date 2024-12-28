@@ -141,7 +141,7 @@ def main() -> Any:
         summary_color = "green" if success else "red"
         status = color.color("Success" if success else "Failure", fg=summary_color, style="bold")
         timing = color.color(f"in {time.time() - start:.3f}s", fg=summary_color)
-        print(f"{color.cyan("dev-cmd")}] {status} {timing}", file=sys.stderr)
+        print(f"{color.cyan('dev-cmd')}] {status} {timing}", file=sys.stderr)
 
 
 if __name__ == "__main__":
