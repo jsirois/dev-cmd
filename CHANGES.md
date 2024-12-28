@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.5.1
+
+Fix inadvertent `-p` / `--parallel` output interleaving.
+
 ## 0.5.0
 
 Add support for `--color` choice and respect ambient color setting when there is not `--color`

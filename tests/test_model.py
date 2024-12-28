@@ -5,14 +5,14 @@ import pytest
 
 from dev_cmd.errors import InvalidModelError
 from dev_cmd.invoke import Invocation
-from dev_cmd.model import Command, Group, Task
+from dev_cmd.model import Command
 
 
 def test_invocation_create_no_extra_args():
     command = Command("foo", args=())
     invocation = Invocation.create(command)
     assert not invocation.accepts_extra_args
-    assert (Task("foo", Group((command,))),) == invocation.tasks
+    assert (command,) == invocation.steps
 
 
 def test_invocation_create_accepts_extra_args():
@@ -20,7 +20,7 @@ def test_invocation_create_accepts_extra_args():
     bar = Command("bar", args=(), accepts_extra_args=False)
     invocation = Invocation.create(foo, bar)
     assert invocation.accepts_extra_args
-    assert (Task("foo", Group((foo,))), Task("bar", Group((bar,)))) == invocation.tasks
+    assert foo, bar == invocation.steps
 
 
 def test_invocation_create_multiple_extra_args():
