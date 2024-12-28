@@ -78,69 +78,52 @@ async def _invoke_group(task_name: str, group: Group, *extra_args: str, serial: 
                 await _invoke_group(task_name, member.steps, *extra_args, serial=True)
             else:
                 await _invoke_group(task_name, member, *extra_args, serial=not serial)
-    else:
+        return
 
-        async def invoke_command_captured(command: Command) -> tuple[Command, int, bytes]:
-            proc = await _invoke_command(
-                command,
-                *extra_args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            output, _ = await proc.communicate()
-            return command, await proc.wait(), output
-
-        async def iter_tasks(
-            item: Command | Task | Group,
-        ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes] | None]]:
-            if isinstance(item, Command):
-                yield asyncio.create_task(invoke_command_captured(item))
-            elif isinstance(item, Task):
-                yield asyncio.create_task(
-                    _invoke_group(task_name, item.steps, *extra_args, serial=True)
-                )
-            else:
-                yield asyncio.create_task(
-                    _invoke_group(task_name, item, *extra_args, serial=not serial)
-                )
-
-        parallel_steps = " ".join(
-            f"{len(member.members)} serial steps" if isinstance(member, Group) else member.name
-            for member in group.members
+    async def invoke_command_captured(command: Command) -> tuple[Command, int, bytes]:
+        proc = await _invoke_command(
+            command, *extra_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
         )
-        message = f"Concurrently executing {color.bold(parallel_steps)}..."
-        await aioconsole.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)
-        errors: list[tuple[str, CalledProcessError]] = []
-        for invoked in asyncio.as_completed(
-            [r for m in group.members async for r in iter_tasks(m)]
-        ):
-            result = await invoked
-            if not result:
-                continue
+        output, _ = await proc.communicate()
+        return command, await proc.wait(), output
 
-            cmd, returncode, stdout = result
-            if returncode != 0:
-                errors.append(
-                    (
-                        cmd.name,
-                        CalledProcessError(returncode=returncode, cmd=cmd.args),
-                    )
-                )
-            cmd_name = color.color(
-                cmd.name, fg="magenta" if returncode == 0 else "red", style="bold"
+    async def iter_tasks(
+        item: Command | Task | Group,
+    ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes] | None]]:
+        if isinstance(item, Command):
+            yield asyncio.create_task(invoke_command_captured(item))
+        elif isinstance(item, Task):
+            yield asyncio.create_task(
+                _invoke_group(task_name, item.steps, *extra_args, serial=True)
             )
-            await aioconsole.aprint(
-                os.linesep.join((f"{prefix} {cmd_name}:", stdout.decode())),
-                end="",
-                use_stderr=True,
+        else:
+            yield asyncio.create_task(
+                _invoke_group(task_name, item, *extra_args, serial=not serial)
             )
-        if errors:
-            lines = [
-                f"{len(errors)} of {len(group.members)} parallel commands in {task_name} "
-                f"failed:"
-            ]
-            lines.extend(f"{cmd}: {error}" for cmd, error in errors)
-            raise ParallelExecutionError(os.linesep.join(lines))
+
+    parallel_steps = " ".join(
+        f"{len(member.members)} serial steps" if isinstance(member, Group) else member.name
+        for member in group.members
+    )
+    message = f"Concurrently executing {color.bold(parallel_steps)}..."
+    await aioconsole.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)
+    errors: list[tuple[str, CalledProcessError]] = []
+    for invoked in asyncio.as_completed([r for m in group.members async for r in iter_tasks(m)]):
+        result = await invoked
+        if not result:
+            continue
+
+        cmd, returncode, stdout = result
+        if returncode != 0:
+            errors.append((cmd.name, CalledProcessError(returncode=returncode, cmd=cmd.args)))
+        cmd_name = color.color(cmd.name, fg="magenta" if returncode == 0 else "red", style="bold")
+        await aioconsole.aprint(
+            os.linesep.join((f"{prefix} {cmd_name}:", stdout.decode())), end="", use_stderr=True
+        )
+    if errors:
+        lines = [f"{len(errors)} of {len(group.members)} parallel commands in {task_name} failed:"]
+        lines.extend(f"{cmd}: {error}" for cmd, error in errors)
+        raise ParallelExecutionError(os.linesep.join(lines))
 
 
 @dataclass(frozen=True)
