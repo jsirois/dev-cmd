@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.6.0
+
+Emit a trailing message indicating overall run status and timing.
+
 ## 0.5.1
 
 Fix inadvertent `-p` / `--parallel` output interleaving.

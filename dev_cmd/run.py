@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from argparse import ArgumentParser
 from subprocess import CalledProcessError
 from typing import Any, Iterable
@@ -124,15 +125,23 @@ def _parse_args() -> tuple[list[str], bool, list[str]]:
 
 
 def main() -> Any:
+    start = time.time()
+    success = False
     tasks, parallel, extra_args = _parse_args()
     try:
         pyproject_toml = find_pyproject_toml()
         dev = parse_dev_config(pyproject_toml)
-        return _run(dev, *tasks, parallel=parallel, extra_args=extra_args)
+        _run(dev, *tasks, parallel=parallel, extra_args=extra_args)
+        success = True
     except DevError as e:
         return f"{color.red('Configuration error')}: {color.yellow(str(e))}"
     except (OSError, CalledProcessError, ParallelExecutionError) as e:
         return color.red(str(e))
+    finally:
+        summary_color = "green" if success else "red"
+        status = color.color("Success" if success else "Failure", fg=summary_color, style="bold")
+        timing = color.color(f"in {time.time() - start:.3f}s", fg=summary_color)
+        print(f"{color.cyan("dev-cmd")}] {status} {timing}", file=sys.stderr)
 
 
 if __name__ == "__main__":
