@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.9.0
+
+Add support for Python 3.8.
+
 ## 0.8.0
 
 Add `-q` / `--quiet` to quiet `dev-cmd` output to just the output of the commands it runs.

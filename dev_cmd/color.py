@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import sys
 from enum import Enum
-from typing import Union
+from typing import Tuple, Union
 
 import colors
 from typing_extensions import TypeAlias
@@ -79,7 +79,7 @@ def bold(text: str) -> str:
     return colors.bold(text) if USE_COLOR else text
 
 
-ColorSpec: TypeAlias = Union[str, int, tuple[int, int, int]]
+ColorSpec: TypeAlias = Union[str, int, Tuple[int, int, int]]
 
 
 def color(

@@ -4,7 +4,7 @@ backend = "setuptools.build_meta"
 
 [project]
 name = "dev-cmd"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 dependencies = [
     "aioconsole",
     "ansicolors",
@@ -20,7 +20,7 @@ readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["automation", "command", "runner", "testing"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -29,7 +29,8 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: Unix",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -107,6 +108,7 @@ lint = ["ruff", "check", "--fix"]
 check-lint = ["ruff", "check"]
 
 type-check = ["mypy", "dev_cmd", "tests"]
+type-check-38 = ["mypy", "--python-version", "3.8", "dev_cmd", "tests"]
 type-check-39 = ["mypy", "--python-version", "3.9", "dev_cmd", "tests"]
 type-check-310 = ["mypy", "--python-version", "3.10", "dev_cmd", "tests"]
 type-check-311 = ["mypy", "--python-version", "3.11", "dev_cmd", "tests"]
@@ -129,6 +131,7 @@ checks = [
     # Parallelizing the type checks and test is safe (they don't modify files), and it nets a ~3x
     # speedup over running them all serially.
     [
+        "type-check-38",
         "type-check-39",
         "type-check-310",
         "type-check-311",
