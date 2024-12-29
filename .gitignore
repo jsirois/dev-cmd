@@ -7,3 +7,8 @@ __pycache__/
 
 # UV outputs artifacts here.
 /dist/
+
+# Tool caches.
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

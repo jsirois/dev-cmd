@@ -1,0 +1,6 @@
+include uv.lock
+
+graft tests
+prune tests/.pytest_cache
+
+global-exclude *.pyc *.pyo
