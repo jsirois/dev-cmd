@@ -11,10 +11,9 @@ from asyncio.tasks import Task as AsyncTask
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator
 
-import aioconsole
-
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
+from dev_cmd.console import Console
 from dev_cmd.errors import ExecutionError, InvalidModelError
 from dev_cmd.model import Command, ExitStyle, Group, Task
 
@@ -34,7 +33,9 @@ def _step_prefix(step_name: str) -> str:
 @dataclass
 class Invocation:
     @classmethod
-    def create(cls, *steps: Command | Task, grace_period: float) -> Invocation:
+    def create(
+        cls, *steps: Command | Task, grace_period: float, console: Console = Console()
+    ) -> Invocation:
         accepts_extra_args: Command | None = None
         for step in steps:
             if isinstance(step, Command):
@@ -60,11 +61,13 @@ class Invocation:
             steps=tuple(steps),
             accepts_extra_args=accepts_extra_args is not None,
             grace_period=grace_period,
+            console=console,
         )
 
     steps: tuple[Command | Task, ...]
     accepts_extra_args: bool
     grace_period: float
+    console: Console
     _in_flight_processes: set[Process] = field(default_factory=set, init=False)
 
     async def invoke(self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP) -> None:
@@ -122,7 +125,7 @@ class Invocation:
                     [asyncio.create_task(process.wait())], timeout=self.grace_period
                 )
                 if pending:
-                    print(
+                    self.console.print(
                         color.yellow(
                             f"Process {process.pid} has not responded to a termination request after "
                             f"{self.grace_period:.2f}s, killing..."
@@ -134,15 +137,15 @@ class Invocation:
     async def _invoke_command(
         self, command: Command, *extra_args, **subprocess_kwargs: Any
     ) -> Process | ExecutionError:
-        args = list(command.args)
-        if extra_args and command.accepts_extra_args:
-            args.extend(extra_args)
-
         if command.cwd and not os.path.exists(command.cwd):
             return ExecutionError(
                 command.name,
                 f"The `cwd` for command {command.name!r} does not exist: {command.cwd}",
             )
+
+        args = list(command.args)
+        if extra_args and command.accepts_extra_args:
+            args.extend(extra_args)
 
         env = os.environ.copy()
         env.update(command.extra_env)
@@ -163,7 +166,7 @@ class Invocation:
         self, command: Command, *extra_args, prefix: str | None = None
     ) -> ExecutionError | None:
         prefix = prefix or _step_prefix(command.name)
-        await aioconsole.aprint(
+        await self.console.aprint(
             f"{prefix} {color.magenta(f'Executing {color.bold(command.name)}...')}",
             use_stderr=True,
         )
@@ -254,7 +257,7 @@ class Invocation:
             for member in group.members
         )
         message = f"Concurrently executing {color.bold(parallel_steps)}..."
-        await aioconsole.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)
+        await self.console.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)
 
         errors: list[ExecutionError] = []
         for invoked in asyncio.as_completed(
@@ -274,9 +277,8 @@ class Invocation:
             cmd_name = color.color(
                 cmd.name, fg="magenta" if returncode == 0 else "red", style="bold"
             )
-            await aioconsole.aprint(
-                os.linesep.join((f"{prefix} {cmd_name}:", stdout.decode())), end="", use_stderr=True
-            )
+            await self.console.aprint(f"{prefix} {cmd_name}:", use_stderr=True)
+            await self.console.aprint(stdout.decode(), end="", use_stderr=True, force=True)
             if returncode != 0:
                 error = ExecutionError.from_failed_cmd(cmd, returncode)
                 if exit_style is ExitStyle.IMMEDIATE:

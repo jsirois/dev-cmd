@@ -13,6 +13,7 @@ from typing import Any, Iterable
 
 from dev_cmd import __version__, color
 from dev_cmd.color import ColorChoice
+from dev_cmd.console import Console
 from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
 from dev_cmd.invoke import Invocation
 from dev_cmd.model import Configuration, ExitStyle
@@ -26,6 +27,7 @@ DEFAULT_GRACE_PERIOD = 5.0
 def _run(
     config: Configuration,
     *names: str,
+    console: Console = Console(),
     parallel: bool = False,
     extra_args: Iterable[str] = (),
     exit_style_override: ExitStyle | None = None,
@@ -38,6 +40,7 @@ def _run(
         try:
             invocation = Invocation.create(
                 *(available_tasks.get(name) or available_cmds[name] for name in names),
+                console=console,
                 grace_period=grace_period,
             )
         except KeyError as e:
@@ -52,7 +55,7 @@ def _run(
                 )
             )
     elif config.default:
-        invocation = Invocation.create(config.default, grace_period=grace_period)
+        invocation = Invocation.create(config.default, console=console, grace_period=grace_period)
     else:
         raise InvalidArgumentError(
             os.linesep.join(
@@ -82,6 +85,7 @@ def _run(
 @dataclass(frozen=True)
 class Options:
     tasks: tuple[str, ...]
+    quiet: bool
     parallel: bool
     extra_args: tuple[str, ...]
     exit_style: ExitStyle | None = None
@@ -95,6 +99,15 @@ def _parse_args() -> Options:
         ),
     )
     parser.add_argument("-V", "--version", action="version", version=__version__)
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help=(
+            "Do not output information about the commands `dev-cmd` is running; just show output "
+            "from the commands run themselves."
+        ),
+    )
     parser.add_argument(
         "-p",
         "--parallel",
@@ -123,9 +136,9 @@ def _parse_args() -> Options:
         "-X",
         "--exit-style",
         dest="exit_style",
-        default=None,
         type=ExitStyle,
         choices=list(ExitStyle),
+        default=None,
         help=(
             "When to exit a `dev-cmd` invocation that encounters command errors. Normally, "
             "`dev-cmd` exits with an error code after the first task step with an errored command "
@@ -147,8 +160,9 @@ def _parse_args() -> Options:
     )
     parser.add_argument(
         "--color",
-        choices=[choice.value for choice in ColorChoice],
-        default=ColorChoice.AUTO.value,
+        type=ColorChoice,
+        choices=list(ColorChoice),
+        default=ColorChoice.AUTO,
         help=(
             "When to color `dev-cmd` output. By default an appropriate color mode is "
             "'auto'-detected, but color use can be forced 'always' on or 'never' on."
@@ -180,7 +194,7 @@ def _parse_args() -> Options:
     color.set_color(ColorChoice(options.color))
 
     parallel = options.parallel and len(options.tasks) > 1
-    if options.parallel and not parallel:
+    if options.parallel and not parallel and not options.quiet:
         single_task = repr(options.tasks[0]) if options.tasks else "the default"
         print(
             color.yellow(
@@ -191,6 +205,7 @@ def _parse_args() -> Options:
 
     return Options(
         tasks=tuple(options.tasks),
+        quiet=options.quiet,
         parallel=parallel,
         extra_args=tuple(extra_args) if extra_args is not None else (),
         exit_style=options.exit_style,
@@ -202,12 +217,14 @@ def main() -> Any:
     start = time.time()
     success = False
     options = _parse_args()
+    console = Console(quiet=options.quiet)
     try:
         pyproject_toml = find_pyproject_toml()
         config = parse_dev_config(pyproject_toml)
         _run(
             config,
             *options.tasks,
+            console=console,
             parallel=options.parallel,
             extra_args=options.extra_args,
             exit_style_override=options.exit_style,
@@ -215,14 +232,24 @@ def main() -> Any:
         )
         success = True
     except DevCmdError as e:
-        return f"{color.red('Configuration error')}: {color.yellow(str(e))}"
+        return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
+    except OSError as e:
+        if console.quiet:
+            return 1
+        return f"{color.color('Failed to launch a command', fg='red', style='bold')}: {color.red(str(e))}"
     except ExecutionError as e:
-        return f"{color.red('dev-cmd')} {color.color(e.step_name, fg='red', style='bold')}] {color.red(e.message)}"
+        if console.quiet:
+            return e.exit_code
+        prefix = f"{color.red('dev-cmd')} {color.color(e.step_name, fg='red', style='bold')}"
+        return f"{prefix}] {color.red(e.message)}"
     finally:
-        summary_color = "green" if success else "red"
-        status = color.color("Success" if success else "Failure", fg=summary_color, style="bold")
-        timing = color.color(f"in {time.time() - start:.3f}s", fg=summary_color)
-        print(f"{color.cyan('dev-cmd')}] {status} {timing}", file=sys.stderr)
+        if not console.quiet:
+            summary_color = "green" if success else "red"
+            status = color.color(
+                "Success" if success else "Failure", fg=summary_color, style="bold"
+            )
+            timing = color.color(f"in {time.time() - start:.3f}s", fg=summary_color)
+            console.print(f"{color.cyan('dev-cmd')}] {status} {timing}", file=sys.stderr)
 
 
 if __name__ == "__main__":

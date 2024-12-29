@@ -1,5 +1,15 @@
 # Release Notes
 
+## 0.8.0
+
+Add `-q` / `--quiet` to quiet `dev-cmd` output to just the output of the commands it runs.
+
+Also fix the `dev-cmd` exit code to reflect the exit code of a failing command when there is
+exactly one failing command.
+
+Finally, fix `dev-cmd` color setting propagation to subprocesses in certain situations where
+`NO_COLOR` or `FORCE_COLOR` are present in the environment.
+
 ## 0.7.0
 
 Add knobs to control when and how `dev-cmd` exits an invocation that has command failures:

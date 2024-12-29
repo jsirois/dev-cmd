@@ -111,6 +111,10 @@ type-check-311 = ["mypy", "--python-version", "3.11", "dev_cmd", "tests"]
 type-check-312 = ["mypy", "--python-version", "3.12", "dev_cmd", "tests"]
 type-check-313 = ["mypy", "--python-version",  "3.13", "dev_cmd", "tests"]
 
+greet = ["python", "-c", "import os; print(f'Hello from {os.getcwd()!r}.')"]
+fail = ["python", "-c", "import sys; sys.exit(42)"]
+error = ["python4"]
+
 [tool.dev-cmd.commands.test]
 args = ["pytest"]
 cwd = "tests"

@@ -42,7 +42,11 @@ class ExecutionError(Exception):
         else:
             reason = f"returned non-zero exit status {exit_code}"
 
-        return cls(step_name=cmd.name, message=f"Command `{shlex.join(cmd.args)}` {reason}")
+        return cls(
+            step_name=cmd.name,
+            message=f"Command `{shlex.join(cmd.args)}` {reason}",
+            exit_code=exit_code,
+        )
 
     @classmethod
     def from_errors(
@@ -59,3 +63,4 @@ class ExecutionError(Exception):
 
     step_name: str
     message: str
+    exit_code: int = 1
