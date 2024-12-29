@@ -11,6 +11,13 @@ from typing import Union
 import colors
 from typing_extensions import TypeAlias
 
+try:
+    import colorama
+except ImportError:
+    pass
+else:
+    colorama.just_fix_windows_console()
+
 
 def _use_color() -> bool:
     # Used in Python 3.13+
