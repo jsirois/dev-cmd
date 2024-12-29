@@ -42,11 +42,11 @@ def set_color(choice: ColorChoice) -> None:
     if choice is ColorChoice.NEVER:
         os.environ["PYTHON_COLORS"] = "0"
         os.environ["NO_COLOR"] = "1"
-        del os.environ["FORCE_COLOR"]
+        os.environ.pop("FORCE_COLOR", None)
     elif choice is ColorChoice.ALWAYS:
         os.environ["PYTHON_COLORS"] = "1"
         os.environ["FORCE_COLOR"] = "1"
-        del os.environ["NO_COLOR"]
+        os.environ.pop("NO_COLOR", None)
 
     global USE_COLOR
     USE_COLOR = _use_color()
