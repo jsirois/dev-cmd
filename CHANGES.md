@@ -4,6 +4,8 @@
 
 Add support for Python 3.8.
 
+Also improve color support for Windows.
+
 ## 0.8.0
 
 Add `-q` / `--quiet` to quiet `dev-cmd` output to just the output of the commands it runs.
