@@ -16,7 +16,7 @@ jobs:
       - name: Noop
         run: "true"
   checks:
-    name: ${{ matrix.os }} Python ${{ matrix.python-version }}: uv run dev-cmd ci
+    name: "${{ matrix.os }} Python ${{ matrix.python-version }}: uv run dev-cmd ci"
     needs: org-check
     runs-on: ${{ matrix.os }}
     strategy:
