@@ -137,3 +137,4 @@ ci = [["check-fmt", "check-lint", "type-check", "test"]]
 
 [tool.dev-cmd]
 default = "checks"
+exit-style = "immediate"

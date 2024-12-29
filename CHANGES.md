@@ -1,5 +1,15 @@
 # Release Notes
 
+## 0.7.0
+
+Add knobs to control when and how `dev-cmd` exits an invocation that has command failures:
++ `[tool.dev-cmd] exit-style` and `-k` / `--keep-going` or `-X` / `--exit-style` allow configuring
+  how quickly the `dev-cmd` invocation exits after a command failure. By default, it exits after the
+  step containing the 1st command failure completes, but an immediate end or continuation through
+  all steps can be requested.
++ `[tool.dev-cmd] grace-period` and `--grace-period` allow configuring how in-flight commands are
+  terminated when exiting an invocation with command errors.
+
 ## 0.6.0
 
 Emit a trailing message indicating overall run status and timing.

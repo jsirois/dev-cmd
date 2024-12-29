@@ -8,47 +8,59 @@ import os
 import sys
 import time
 from argparse import ArgumentParser
-from subprocess import CalledProcessError
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 from dev_cmd import __version__, color
 from dev_cmd.color import ColorChoice
-from dev_cmd.errors import DevError, InvalidArgumentError, ParallelExecutionError
+from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
 from dev_cmd.invoke import Invocation
-from dev_cmd.model import Dev
+from dev_cmd.model import Configuration, ExitStyle
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.project import find_pyproject_toml
 
+DEFAULT_EXIT_STYLE = ExitStyle.AFTER_STEP
+DEFAULT_GRACE_PERIOD = 5.0
 
-def _run(dev: Dev, *names: str, parallel: bool = False, extra_args: Iterable[str] = ()) -> None:
+
+def _run(
+    config: Configuration,
+    *names: str,
+    parallel: bool = False,
+    extra_args: Iterable[str] = (),
+    exit_style_override: ExitStyle | None = None,
+    grace_period_override: float | None = None,
+) -> None:
+    grace_period = grace_period_override or config.grace_period or DEFAULT_GRACE_PERIOD
     if names:
-        available_cmds = {cmd.name: cmd for cmd in dev.commands}
-        available_tasks = {task.name: task for task in dev.tasks}
+        available_cmds = {cmd.name: cmd for cmd in config.commands}
+        available_tasks = {task.name: task for task in config.tasks}
         try:
             invocation = Invocation.create(
                 *(available_tasks.get(name) or available_cmds[name] for name in names),
+                grace_period=grace_period,
             )
         except KeyError as e:
             raise InvalidArgumentError(
                 os.linesep.join(
                     (
-                        f"A requested task is not defined in {dev.source}: {e}",
+                        f"A requested task is not defined in {config.source}: {e}",
                         "",
                         f"Available tasks: {' '.join(sorted(available_tasks))}",
                         f"Available commands: {' '.join(sorted(available_cmds))}",
                     )
                 )
             )
-    elif dev.default:
-        invocation = Invocation.create(dev.default)
+    elif config.default:
+        invocation = Invocation.create(config.default, grace_period=grace_period)
     else:
         raise InvalidArgumentError(
             os.linesep.join(
                 (
                     f"usage: {sys.argv[0]} task|cmd [task|cmd...]",
                     "",
-                    f"Available tasks: {' '.join(sorted(task.name for task in dev.tasks))}",
-                    f"Available commands: {' '.join(sorted(cmd.name for cmd in dev.commands))}",
+                    f"Available tasks: {' '.join(sorted(task.name for task in config.tasks))}",
+                    f"Available commands: {' '.join(sorted(cmd.name for cmd in config.commands))}",
                 )
             )
         )
@@ -59,16 +71,28 @@ def _run(dev: Dev, *names: str, parallel: bool = False, extra_args: Iterable[str
             f"arguments: {extra_args}"
         )
 
+    exit_style = exit_style_override or config.exit_style or DEFAULT_EXIT_STYLE
     return asyncio.run(
-        invocation.invoke_parallel(*extra_args) if parallel else invocation.invoke(*extra_args)
+        invocation.invoke_parallel(*extra_args, exit_style=exit_style)
+        if parallel
+        else invocation.invoke(*extra_args, exit_style=exit_style)
     )
 
 
-def _parse_args() -> tuple[list[str], bool, list[str]]:
+@dataclass(frozen=True)
+class Options:
+    tasks: tuple[str, ...]
+    parallel: bool
+    extra_args: tuple[str, ...]
+    exit_style: ExitStyle | None = None
+    grace_period: float | None = None
+
+
+def _parse_args() -> Options:
     parser = ArgumentParser(
         description=(
             "A simple command runner to help running development tools easily and consistently."
-        )
+        ),
     )
     parser.add_argument("-V", "--version", action="version", version=__version__)
     parser.add_argument(
@@ -80,11 +104,55 @@ def _parse_args() -> tuple[list[str], bool, list[str]]:
             "there are two or more top level commands or tasks requested."
         ),
     )
+
+    exit_style_group = parser.add_mutually_exclusive_group()
+    exit_style_group.add_argument(
+        "-k",
+        "--keep-going",
+        dest="exit_style",
+        action="store_const",
+        const=ExitStyle.END,
+        help=(
+            "Normally, `dev-cmd` exits with an error code after the first task step with an "
+            "errored command completes. You can choose to `-k` / `--keep-going` to run all steps "
+            "to the end before exiting. This option is mutually exclusive with "
+            "`-X` / `--exit-style`."
+        ),
+    )
+    exit_style_group.add_argument(
+        "-X",
+        "--exit-style",
+        dest="exit_style",
+        default=None,
+        type=ExitStyle,
+        choices=list(ExitStyle),
+        help=(
+            "When to exit a `dev-cmd` invocation that encounters command errors. Normally, "
+            "`dev-cmd` exits with an error code after the first task step with an errored command "
+            "completes. This option is mutually exclusive with `-k` / `--keep-going`."
+        ),
+    )
+
+    parser.add_argument(
+        "--grace-period",
+        type=float,
+        default=None,
+        help=(
+            "The amount of time in fractional seconds to wait for terminated commands to exit "
+            f"before killing them forcefully: {DEFAULT_GRACE_PERIOD} seconds by default. If set to "
+            f"zero or a negative value, commands are always killed forcefully with no grace "
+            f"period. This setting comes into play when the `--exit-style` is either "
+            f"{ExitStyle.AFTER_STEP.value!r} or {ExitStyle.IMMEDIATE.value!r}."
+        ),
+    )
     parser.add_argument(
         "--color",
         choices=[choice.value for choice in ColorChoice],
         default=ColorChoice.AUTO.value,
-        help="When to color output.",
+        help=(
+            "When to color `dev-cmd` output. By default an appropriate color mode is "
+            "'auto'-detected, but color use can be forced 'always' on or 'never' on."
+        ),
     )
     parser.add_argument(
         "tasks",
@@ -121,22 +189,35 @@ def _parse_args() -> tuple[list[str], bool, list[str]]:
             )
         )
 
-    return options.tasks, parallel, extra_args if extra_args is not None else []
+    return Options(
+        tasks=tuple(options.tasks),
+        parallel=parallel,
+        extra_args=tuple(extra_args) if extra_args is not None else (),
+        exit_style=options.exit_style,
+        grace_period=options.grace_period,
+    )
 
 
 def main() -> Any:
     start = time.time()
     success = False
-    tasks, parallel, extra_args = _parse_args()
+    options = _parse_args()
     try:
         pyproject_toml = find_pyproject_toml()
-        dev = parse_dev_config(pyproject_toml)
-        _run(dev, *tasks, parallel=parallel, extra_args=extra_args)
+        config = parse_dev_config(pyproject_toml)
+        _run(
+            config,
+            *options.tasks,
+            parallel=options.parallel,
+            extra_args=options.extra_args,
+            exit_style_override=options.exit_style,
+            grace_period_override=options.grace_period,
+        )
         success = True
-    except DevError as e:
+    except DevCmdError as e:
         return f"{color.red('Configuration error')}: {color.yellow(str(e))}"
-    except (OSError, CalledProcessError, ParallelExecutionError) as e:
-        return color.red(str(e))
+    except ExecutionError as e:
+        return f"{color.red('dev-cmd')} {color.color(e.step_name, fg='red', style='bold')}] {color.red(e.message)}"
     finally:
         summary_color = "green" if success else "red"
         status = color.color("Success" if success else "Failure", fg=summary_color, style="bold")

@@ -1,22 +1,61 @@
 # Copyright 2024 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+from __future__ import annotations
 
-class DevError(Exception):
-    """Indicates an error processing dev commands."""
+import os
+import shlex
+import signal
+from dataclasses import dataclass
+from typing import Collection
 
-
-class InvalidProjectError(DevError):
-    """Indicates the dev runner cannot locate or parse the `pyproject.toml` file."""
-
-
-class InvalidArgumentError(DevError):
-    """Indicates invalid argument were passed to the dev command."""
+from dev_cmd.model import Command
 
 
-class InvalidModelError(DevError):
-    """Indicates invalid dev command configuration."""
+class DevCmdError(Exception):
+    """Indicates an error processing `dev-cmd` configuration."""
 
 
-class ParallelExecutionError(Exception):
-    """Conveys details of 2 or more failed parallel commands."""
+class InvalidProjectError(DevCmdError):
+    """Indicates the `dev-cmd` runner cannot locate or parse the `pyproject.toml` file."""
+
+
+class InvalidArgumentError(DevCmdError):
+    """Indicates invalid arguments were passed to `dev-cmd`."""
+
+
+class InvalidModelError(DevCmdError):
+    """Indicates invalid `dev-cmd` configuration."""
+
+
+@dataclass(frozen=True)
+class ExecutionError(Exception):
+    """Conveys details of 1 or more command failures in a `dev-cmd` invocation."""
+
+    @classmethod
+    def from_failed_cmd(cls, cmd: Command, exit_code: int) -> ExecutionError:
+        if exit_code < 0:
+            try:
+                reason = f"died with {signal.Signals(-exit_code).name}"
+            except ValueError:
+                reason = f"died with unknown signal {-exit_code}"
+        else:
+            reason = f"returned non-zero exit status {exit_code}"
+
+        return cls(step_name=cmd.name, message=f"Command `{shlex.join(cmd.args)}` {reason}")
+
+    @classmethod
+    def from_errors(
+        cls,
+        step_name: str,
+        total_count: int,
+        errors: Collection[ExecutionError],
+        parallel: bool = False,
+    ) -> ExecutionError:
+        maybe_parallel = "parallel " if parallel else ""
+        lines = [f"{len(errors)} of {total_count} {maybe_parallel}commands in {step_name} failed:"]
+        lines.extend(f"{error.step_name}: {error.message}" for error in errors)
+        return cls(step_name=step_name, message=os.linesep.join(lines))
+
+    step_name: str
+    message: str

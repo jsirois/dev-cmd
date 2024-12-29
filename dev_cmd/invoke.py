@@ -8,16 +8,15 @@ import itertools
 import os
 from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
-from dataclasses import dataclass
-from subprocess import CalledProcessError
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator
 
 import aioconsole
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
-from dev_cmd.errors import InvalidModelError, ParallelExecutionError
-from dev_cmd.model import Command, Group, Task
+from dev_cmd.errors import ExecutionError, InvalidModelError
+from dev_cmd.model import Command, ExitStyle, Group, Task
 
 
 def _flatten(step: Command | Group | Task) -> Iterator[Command | Group]:
@@ -28,108 +27,14 @@ def _flatten(step: Command | Group | Task) -> Iterator[Command | Group]:
         yield step
 
 
-async def _invoke_command(command: Command, *extra_args, **subprocess_kwargs: Any) -> Process:
-    args = list(command.args)
-    if extra_args and command.accepts_extra_args:
-        args.extend(extra_args)
-
-    if command.cwd and not os.path.exists(command.cwd):
-        raise InvalidModelError(
-            f"The `cwd` for command {command.name!r} does not exist: {command.cwd}"
-        )
-
-    env = os.environ.copy()
-    env.update(command.extra_env)
-    if USE_COLOR and not any(color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR")):
-        env.setdefault("FORCE_COLOR", "1")
-
-    return await asyncio.create_subprocess_exec(
-        args[0],
-        *args[1:],
-        cwd=command.cwd,
-        env=env,
-        **subprocess_kwargs,
-    )
-
-
 def _step_prefix(step_name: str) -> str:
     return color.cyan(f"dev-cmd {color.bold(step_name)}]")
 
 
-async def _invoke_command_sync(command: Command, *extra_args, prefix: str | None = None):
-    prefix = prefix or _step_prefix(command.name)
-    await aioconsole.aprint(
-        f"{prefix} {color.magenta(f'Executing {color.bold(command.name)}...')}",
-        use_stderr=True,
-    )
-    process = await _invoke_command(command, *extra_args)
-    returncode = await process.wait()
-    if returncode != 0:
-        raise CalledProcessError(returncode=returncode, cmd=command.args)
-
-
-async def _invoke_group(task_name: str, group: Group, *extra_args: str, serial: bool) -> None:
-    prefix = _step_prefix(task_name)
-    if serial:
-        for member in group.members:
-            if isinstance(member, Command):
-                await _invoke_command_sync(member, *extra_args, prefix=prefix)
-            elif isinstance(member, Task):
-                await _invoke_group(task_name, member.steps, *extra_args, serial=True)
-            else:
-                await _invoke_group(task_name, member, *extra_args, serial=not serial)
-        return
-
-    async def invoke_command_captured(command: Command) -> tuple[Command, int, bytes]:
-        proc = await _invoke_command(
-            command, *extra_args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
-        )
-        output, _ = await proc.communicate()
-        return command, await proc.wait(), output
-
-    async def iter_tasks(
-        item: Command | Task | Group,
-    ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes] | None]]:
-        if isinstance(item, Command):
-            yield asyncio.create_task(invoke_command_captured(item))
-        elif isinstance(item, Task):
-            yield asyncio.create_task(
-                _invoke_group(task_name, item.steps, *extra_args, serial=True)
-            )
-        else:
-            yield asyncio.create_task(
-                _invoke_group(task_name, item, *extra_args, serial=not serial)
-            )
-
-    parallel_steps = " ".join(
-        f"{len(member.members)} serial steps" if isinstance(member, Group) else member.name
-        for member in group.members
-    )
-    message = f"Concurrently executing {color.bold(parallel_steps)}..."
-    await aioconsole.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)
-    errors: list[tuple[str, CalledProcessError]] = []
-    for invoked in asyncio.as_completed([r for m in group.members async for r in iter_tasks(m)]):
-        result = await invoked
-        if not result:
-            continue
-
-        cmd, returncode, stdout = result
-        if returncode != 0:
-            errors.append((cmd.name, CalledProcessError(returncode=returncode, cmd=cmd.args)))
-        cmd_name = color.color(cmd.name, fg="magenta" if returncode == 0 else "red", style="bold")
-        await aioconsole.aprint(
-            os.linesep.join((f"{prefix} {cmd_name}:", stdout.decode())), end="", use_stderr=True
-        )
-    if errors:
-        lines = [f"{len(errors)} of {len(group.members)} parallel commands in {task_name} failed:"]
-        lines.extend(f"{cmd}: {error}" for cmd, error in errors)
-        raise ParallelExecutionError(os.linesep.join(lines))
-
-
-@dataclass(frozen=True)
+@dataclass
 class Invocation:
     @classmethod
-    def create(cls, *steps: Command | Task) -> Invocation:
+    def create(cls, *steps: Command | Task, grace_period: float) -> Invocation:
         accepts_extra_args: Command | None = None
         for step in steps:
             if isinstance(step, Command):
@@ -151,24 +56,242 @@ class Invocation:
                     )
                 accepts_extra_args = command
 
-        return cls(steps=tuple(steps), accepts_extra_args=accepts_extra_args is not None)
+        return cls(
+            steps=tuple(steps),
+            accepts_extra_args=accepts_extra_args is not None,
+            grace_period=grace_period,
+        )
 
     steps: tuple[Command | Task, ...]
     accepts_extra_args: bool
+    grace_period: float
+    _in_flight_processes: set[Process] = field(default_factory=set, init=False)
 
-    async def invoke(self, *extra_args: str) -> None:
+    async def invoke(self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP) -> None:
+        errors: list[ExecutionError] = []
         for task in self.steps:
             if isinstance(task, Command):
-                await _invoke_command_sync(task, *extra_args)
+                error = await self._invoke_command_sync(task, *extra_args)
             else:
-                await _invoke_group(task.name, task.steps, *extra_args, serial=True)
+                error = await self._invoke_group(
+                    task.name, task.steps, *extra_args, serial=True, exit_style=exit_style
+                )
+            if error is None:
+                continue
+            if exit_style in (ExitStyle.IMMEDIATE, ExitStyle.AFTER_STEP):
+                await self._terminate_in_flight_processes()
+                raise error
+            errors.append(error)
 
-    async def invoke_parallel(self, *extra_args: str) -> None:
-        await _invoke_group(
+        if len(errors) == 1:
+            await self._terminate_in_flight_processes()
+            raise errors[0]
+
+        if errors:
+            await self._terminate_in_flight_processes()
+            raise ExecutionError.from_errors(
+                step_name=f"dev-cmd {' '.join(step.name for step in self.steps)}",
+                total_count=len(self.steps),
+                errors=errors,
+            )
+
+    async def invoke_parallel(
+        self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP
+    ) -> None:
+        if error := await self._invoke_group(
             "*",
             Group(
                 members=tuple(itertools.chain.from_iterable(_flatten(task) for task in self.steps))
             ),
             *extra_args,
             serial=False,
+            exit_style=exit_style,
+        ):
+            await self._terminate_in_flight_processes()
+            raise error
+
+    async def _terminate_in_flight_processes(self) -> None:
+        while self._in_flight_processes:
+            process = self._in_flight_processes.pop()
+            if self.grace_period <= 0:
+                process.kill()
+                await process.wait()
+            else:
+                process.terminate()
+                _, pending = await asyncio.wait(
+                    [asyncio.create_task(process.wait())], timeout=self.grace_period
+                )
+                if pending:
+                    print(
+                        color.yellow(
+                            f"Process {process.pid} has not responded to a termination request after "
+                            f"{self.grace_period:.2f}s, killing..."
+                        )
+                    )
+                    process.kill()
+                    await process.wait()
+
+    async def _invoke_command(
+        self, command: Command, *extra_args, **subprocess_kwargs: Any
+    ) -> Process | ExecutionError:
+        args = list(command.args)
+        if extra_args and command.accepts_extra_args:
+            args.extend(extra_args)
+
+        if command.cwd and not os.path.exists(command.cwd):
+            return ExecutionError(
+                command.name,
+                f"The `cwd` for command {command.name!r} does not exist: {command.cwd}",
+            )
+
+        env = os.environ.copy()
+        env.update(command.extra_env)
+        if USE_COLOR and not any(color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR")):
+            env.setdefault("FORCE_COLOR", "1")
+
+        process = await asyncio.create_subprocess_exec(
+            args[0],
+            *args[1:],
+            cwd=command.cwd,
+            env=env,
+            **subprocess_kwargs,
         )
+        self._in_flight_processes.add(process)
+        return process
+
+    async def _invoke_command_sync(
+        self, command: Command, *extra_args, prefix: str | None = None
+    ) -> ExecutionError | None:
+        prefix = prefix or _step_prefix(command.name)
+        await aioconsole.aprint(
+            f"{prefix} {color.magenta(f'Executing {color.bold(command.name)}...')}",
+            use_stderr=True,
+        )
+        process_or_error = await self._invoke_command(command, *extra_args)
+        if isinstance(process_or_error, ExecutionError):
+            return process_or_error
+
+        returncode = await process_or_error.wait()
+        self._in_flight_processes.discard(process_or_error)
+        if returncode == 0:
+            return None
+
+        return ExecutionError.from_failed_cmd(command, returncode)
+
+    async def _invoke_group(
+        self,
+        task_name: str,
+        group: Group,
+        *extra_args: str,
+        serial: bool,
+        exit_style: ExitStyle = ExitStyle.AFTER_STEP,
+    ) -> ExecutionError | None:
+        prefix = _step_prefix(task_name)
+        if serial:
+            serial_errors: list[ExecutionError] = []
+            for member in group.members:
+                if isinstance(member, Command):
+                    error = await self._invoke_command_sync(member, *extra_args, prefix=prefix)
+                elif isinstance(member, Task):
+                    error = await self._invoke_group(
+                        task_name, member.steps, *extra_args, serial=True, exit_style=exit_style
+                    )
+                else:
+                    error = await self._invoke_group(
+                        task_name, member, *extra_args, serial=not serial, exit_style=exit_style
+                    )
+                if error:
+                    if exit_style is ExitStyle.IMMEDIATE:
+                        return error
+                    serial_errors.append(error)
+
+            if len(serial_errors) == 1:
+                return serial_errors[0]
+
+            if serial_errors:
+                return ExecutionError.from_errors(
+                    step_name=task_name, total_count=len(group.members), errors=serial_errors
+                )
+
+            return None
+
+        async def invoke_command_captured(
+            command: Command,
+        ) -> tuple[Command, int, bytes] | ExecutionError:
+            proc_or_error = await self._invoke_command(
+                command,
+                *extra_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            if isinstance(proc_or_error, ExecutionError):
+                return proc_or_error
+
+            output, _ = await proc_or_error.communicate()
+            self._in_flight_processes.discard(proc_or_error)
+            return command, await proc_or_error.wait(), output
+
+        async def iter_tasks(
+            item: Command | Task | Group,
+        ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes] | ExecutionError | None]]:
+            if isinstance(item, Command):
+                yield asyncio.create_task(invoke_command_captured(item))
+            elif isinstance(item, Task):
+                yield asyncio.create_task(
+                    self._invoke_group(
+                        task_name, item.steps, *extra_args, serial=True, exit_style=exit_style
+                    )
+                )
+            else:
+                yield asyncio.create_task(
+                    self._invoke_group(
+                        task_name, item, *extra_args, serial=not serial, exit_style=exit_style
+                    )
+                )
+
+        parallel_steps = " ".join(
+            f"{len(member.members)} serial steps" if isinstance(member, Group) else member.name
+            for member in group.members
+        )
+        message = f"Concurrently executing {color.bold(parallel_steps)}..."
+        await aioconsole.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)
+
+        errors: list[ExecutionError] = []
+        for invoked in asyncio.as_completed(
+            [r for m in group.members async for r in iter_tasks(m)]
+        ):
+            result = await invoked
+            if result is None:
+                continue
+
+            if isinstance(result, ExecutionError):
+                if exit_style is ExitStyle.IMMEDIATE:
+                    return result
+                errors.append(result)
+                continue
+
+            cmd, returncode, stdout = result
+            cmd_name = color.color(
+                cmd.name, fg="magenta" if returncode == 0 else "red", style="bold"
+            )
+            await aioconsole.aprint(
+                os.linesep.join((f"{prefix} {cmd_name}:", stdout.decode())), end="", use_stderr=True
+            )
+            if returncode != 0:
+                error = ExecutionError.from_failed_cmd(cmd, returncode)
+                if exit_style is ExitStyle.IMMEDIATE:
+                    return error
+                errors.append(error)
+
+        if len(errors) == 1:
+            return errors[0]
+
+        if errors:
+            return ExecutionError.from_errors(
+                step_name=task_name,
+                total_count=len(group.members),
+                errors=tuple(errors),
+                parallel=True,
+            )
+
+        return None

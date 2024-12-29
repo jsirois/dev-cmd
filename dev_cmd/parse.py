@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Container, Iterator, Mapping, cast
 
 from dev_cmd.errors import InvalidModelError
-from dev_cmd.model import Command, Dev, Group, Task
+from dev_cmd.model import Command, Configuration, ExitStyle, Group, Task
 from dev_cmd.project import PyProjectToml
 
 
@@ -175,14 +175,15 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
 def _parse_default(
     default: Any, commands: Mapping[str, Command], tasks: Mapping[str, Task]
 ) -> Command | Task | None:
-    if not default:
+    if default is None:
         if len(commands) == 1:
             return next(iter(commands.values()))
         return None
 
     if not isinstance(default, str):
         raise InvalidModelError(
-            f"Expected default to be a string but given: {default} of type {type(default)}."
+            f"Expected [tool.dev-cmd] `default` to be a string but given: {default} of type "
+            f"{type(default)}."
         )
 
     try:
@@ -191,7 +192,8 @@ def _parse_default(
         raise InvalidModelError(
             os.linesep.join(
                 (
-                    f"The default {default!r} is not the name of a defined command or task.",
+                    f"The [tool.dev-cmd] `default` {default!r} is not the name of a defined "
+                    "command or task.",
                     "",
                     f"Available tasks: {' '.join(sorted(tasks)) if tasks else '<None>'}",
                     f"Available commands: {' '.join(sorted(commands))}",
@@ -200,7 +202,40 @@ def _parse_default(
         )
 
 
-def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
+def _parse_exit_style(exit_style: Any) -> ExitStyle | None:
+    if exit_style is None:
+        return None
+
+    if not isinstance(exit_style, str):
+        raise InvalidModelError(
+            f"Expected [tool.dev-cmd] `exit-style` to be a string but given: {exit_style} of type "
+            f"{type(exit_style)}."
+        )
+
+    try:
+        return ExitStyle(exit_style)
+    except ValueError:
+        raise InvalidModelError(
+            f"The [tool.dev-cmd] `exit-style` of {exit_style!r} is not recognized. Valid choices "
+            f"are {', '.join(repr(es.value) for es in list(ExitStyle)[:-1])} and "
+            f"{list(ExitStyle)[-1].value!r}."
+        )
+
+
+def _parse_grace_period(grace_period: Any) -> float | None:
+    if grace_period is None:
+        return None
+
+    if not isinstance(grace_period, (int, float)):
+        raise InvalidModelError(
+            f"Expected [tool.dev-cmd] `grace-period` to be a number but given: {grace_period} of "
+            f"type {type(grace_period)}."
+        )
+
+    return float(grace_period)
+
+
+def parse_dev_config(pyproject_toml: PyProjectToml) -> Configuration:
     pyproject_data = pyproject_toml.parse()
     try:
         dev_cmd_data = _assert_dict_str_keys(
@@ -234,15 +269,19 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Dev:
         for task in _parse_tasks(pop_dict("tasks", path="[tool.dev-cmd.tasks]"), commands)
     }
     default = _parse_default(dev_cmd_data.pop("default", None), commands, tasks)
+    exit_style = _parse_exit_style(dev_cmd_data.pop("exit-style", None))
+    grace_period = _parse_grace_period(dev_cmd_data.pop("grace-period", None))
 
     if dev_cmd_data:
         raise InvalidModelError(
             f"Unexpected configuration keys in the [tool.dev-cmd] table: {' '.join(dev_cmd_data)}"
         )
 
-    return Dev(
+    return Configuration(
         commands=tuple(commands.values()),
         tasks=tuple(tasks.values()),
         default=default,
+        exit_style=exit_style,
+        grace_period=grace_period,
         source=pyproject_toml.path,
     )

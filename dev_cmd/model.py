@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from functools import cached_property
 from pathlib import PurePath
 from typing import Any
@@ -43,9 +44,20 @@ class Task:
         return self.steps.accepts_extra_args
 
 
+class ExitStyle(Enum):
+    AFTER_STEP = "after-step"
+    IMMEDIATE = "immediate"
+    END = "end"
+
+    def __str__(self) -> str:
+        return self.value
+
+
 @dataclass(frozen=True)
-class Dev:
+class Configuration:
     commands: tuple[Command, ...]
     tasks: tuple[Task, ...]
     default: Command | Task | None = None
+    exit_style: ExitStyle | None = None
+    grace_period: float | None = None
     source: Any = "<code>"
