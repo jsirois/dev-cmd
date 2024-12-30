@@ -6,8 +6,10 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
+import sys
 from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator
 
@@ -28,6 +30,17 @@ def _flatten(step: Command | Group | Task) -> Iterator[Command | Group]:
 
 def _step_prefix(step_name: str) -> str:
     return color.cyan(f"dev-cmd {color.bold(step_name)}]")
+
+
+@contextmanager
+def _guarded_stdin() -> Iterator[None]:
+    # N.B.: This allows interactive async processes to properly read from stdin.
+    # TODO(John Sirois): Come to understand why this works.
+    sys.stdin = os.devnull
+    try:
+        yield
+    finally:
+        sys.stdin = sys.__stdin__
 
 
 @dataclass
@@ -71,47 +84,51 @@ class Invocation:
     _in_flight_processes: set[Process] = field(default_factory=set, init=False)
 
     async def invoke(self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP) -> None:
-        errors: list[ExecutionError] = []
-        for task in self.steps:
-            if isinstance(task, Command):
-                error = await self._invoke_command_sync(task, *extra_args)
-            else:
-                error = await self._invoke_group(
-                    task.name, task.steps, *extra_args, serial=True, exit_style=exit_style
-                )
-            if error is None:
-                continue
-            if exit_style in (ExitStyle.IMMEDIATE, ExitStyle.AFTER_STEP):
+        with _guarded_stdin():
+            errors: list[ExecutionError] = []
+            for task in self.steps:
+                if isinstance(task, Command):
+                    error = await self._invoke_command_sync(task, *extra_args)
+                else:
+                    error = await self._invoke_group(
+                        task.name, task.steps, *extra_args, serial=True, exit_style=exit_style
+                    )
+                if error is None:
+                    continue
+                if exit_style in (ExitStyle.IMMEDIATE, ExitStyle.AFTER_STEP):
+                    await self._terminate_in_flight_processes()
+                    raise error
+                errors.append(error)
+
+            if len(errors) == 1:
                 await self._terminate_in_flight_processes()
-                raise error
-            errors.append(error)
+                raise errors[0]
 
-        if len(errors) == 1:
-            await self._terminate_in_flight_processes()
-            raise errors[0]
-
-        if errors:
-            await self._terminate_in_flight_processes()
-            raise ExecutionError.from_errors(
-                step_name=f"dev-cmd {' '.join(step.name for step in self.steps)}",
-                total_count=len(self.steps),
-                errors=errors,
-            )
+            if errors:
+                await self._terminate_in_flight_processes()
+                raise ExecutionError.from_errors(
+                    step_name=f"dev-cmd {' '.join(step.name for step in self.steps)}",
+                    total_count=len(self.steps),
+                    errors=errors,
+                )
 
     async def invoke_parallel(
         self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP
     ) -> None:
-        if error := await self._invoke_group(
-            "*",
-            Group(
-                members=tuple(itertools.chain.from_iterable(_flatten(task) for task in self.steps))
-            ),
-            *extra_args,
-            serial=False,
-            exit_style=exit_style,
-        ):
-            await self._terminate_in_flight_processes()
-            raise error
+        with _guarded_stdin():
+            if error := await self._invoke_group(
+                "*",
+                Group(
+                    members=tuple(
+                        itertools.chain.from_iterable(_flatten(task) for task in self.steps)
+                    )
+                ),
+                *extra_args,
+                serial=False,
+                exit_style=exit_style,
+            ):
+                await self._terminate_in_flight_processes()
+                raise error
 
     async def _terminate_in_flight_processes(self) -> None:
         while self._in_flight_processes:

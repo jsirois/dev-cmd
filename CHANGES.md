@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.9.2
+
+Fix `dev-cmd` for interactive commands that read from stdin.
+
 ## 0.9.1
 
 Fix sdist release to include tests and `uv.lock`.

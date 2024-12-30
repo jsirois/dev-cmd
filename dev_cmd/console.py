@@ -37,6 +37,4 @@ class Console:
     ) -> None:
         if self.quiet and not force:
             return
-        return await aioconsole.aprint(
-            *values, sep=sep, end=end, flush=flush, use_stderr=use_stderr
-        )
+        await aioconsole.aprint(*values, sep=sep, end=end, flush=flush, use_stderr=use_stderr)
