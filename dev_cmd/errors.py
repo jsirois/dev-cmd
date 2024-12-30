@@ -28,7 +28,9 @@ class InvalidModelError(DevCmdError):
     """Indicates invalid `dev-cmd` configuration."""
 
 
-@dataclass(frozen=True)
+# N.B.: This cannot be frozen because Python can attempt to assign to `__traceback__` on exception
+# instances after they are constructed.
+@dataclass
 class ExecutionError(Exception):
     """Conveys details of 1 or more command failures in a `dev-cmd` invocation."""
 

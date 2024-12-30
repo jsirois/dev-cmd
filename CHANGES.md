@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.9.3
+
+Fix `dev-cmd` handling of execution errors. Previously an uncaught exception assigning
+`__traceback__` could be observed in certain situations.
+
 ## 0.9.2
 
 Fix `dev-cmd` for interactive commands that read from stdin.
