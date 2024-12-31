@@ -9,7 +9,7 @@ import sys
 import time
 from argparse import ArgumentParser
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Collection, Iterable
 
 from dev_cmd import __version__, color
 from dev_cmd.color import ColorChoice
@@ -27,6 +27,7 @@ DEFAULT_GRACE_PERIOD = 5.0
 def _run(
     config: Configuration,
     *names: str,
+    skips: Collection[str] = (),
     console: Console = Console(),
     parallel: bool = False,
     extra_args: Iterable[str] = (),
@@ -34,12 +35,28 @@ def _run(
     grace_period_override: float | None = None,
 ) -> None:
     grace_period = grace_period_override or config.grace_period or DEFAULT_GRACE_PERIOD
+
+    available_cmds = {cmd.name: cmd for cmd in config.commands}
+    available_tasks = {task.name: task for task in config.tasks}
+
+    missing_skips = sorted(
+        skip for skip in skips if skip not in available_cmds and skip not in available_tasks
+    )
+    if missing_skips:
+        if len(missing_skips) == 1:
+            missing_skips_list = missing_skips[0]
+        else:
+            missing_skips_list = f"{', '.join(missing_skips[:-1])} and {missing_skips[-1]}"
+        raise InvalidArgumentError(
+            f"You requested skips of {missing_skips_list} which do not correspond to any "
+            f"configured command or task names."
+        )
+
     if names:
-        available_cmds = {cmd.name: cmd for cmd in config.commands}
-        available_tasks = {task.name: task for task in config.tasks}
         try:
             invocation = Invocation.create(
                 *(available_tasks.get(name) or available_cmds[name] for name in names),
+                skips=skips,
                 console=console,
                 grace_period=grace_period,
             )
@@ -55,7 +72,9 @@ def _run(
                 )
             )
     elif config.default:
-        invocation = Invocation.create(config.default, console=console, grace_period=grace_period)
+        invocation = Invocation.create(
+            config.default, skips=skips, console=console, grace_period=grace_period
+        )
     else:
         raise InvalidArgumentError(
             os.linesep.join(
@@ -85,6 +104,7 @@ def _run(
 @dataclass(frozen=True)
 class Options:
     tasks: tuple[str, ...]
+    skips: frozenset[str]
     quiet: bool
     parallel: bool
     extra_args: tuple[str, ...]
@@ -106,6 +126,17 @@ def _parse_args() -> Options:
         help=(
             "Do not output information about the commands `dev-cmd` is running; just show output "
             "from the commands run themselves."
+        ),
+    )
+    parser.add_argument(
+        "-s",
+        "--skip",
+        dest="skips",
+        action="append",
+        default=[],
+        help=(
+            "After calculating all steps to run given the command line args, remove these steps, "
+            "whether they be command names or task names from that list."
         ),
     )
     parser.add_argument(
@@ -205,6 +236,7 @@ def _parse_args() -> Options:
 
     return Options(
         tasks=tuple(options.tasks),
+        skips=frozenset(options.skips),
         quiet=options.quiet,
         parallel=parallel,
         extra_args=tuple(extra_args) if extra_args is not None else (),
@@ -224,6 +256,7 @@ def main() -> Any:
         _run(
             config,
             *options.tasks,
+            skips=options.skips,
             console=console,
             parallel=options.parallel,
             extra_args=options.extra_args,

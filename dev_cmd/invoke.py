@@ -11,7 +11,7 @@ from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Iterator
+from typing import Any, AsyncIterator, Container, Iterator
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
@@ -47,10 +47,16 @@ def _guarded_stdin() -> Iterator[None]:
 class Invocation:
     @classmethod
     def create(
-        cls, *steps: Command | Task, grace_period: float, console: Console = Console()
+        cls,
+        *steps: Command | Task,
+        skips: Container[str],
+        grace_period: float,
+        console: Console = Console(),
     ) -> Invocation:
         accepts_extra_args: Command | None = None
         for step in steps:
+            if step.name in skips:
+                continue
             if isinstance(step, Command):
                 if not step.accepts_extra_args:
                     continue
@@ -61,7 +67,7 @@ class Invocation:
                         f"{accepts_extra_args.name!r} already does."
                     )
                 accepts_extra_args = step
-            elif command := step.accepts_extra_args:
+            elif command := step.accepts_extra_args(skips):
                 if accepts_extra_args and accepts_extra_args != step:
                     raise InvalidModelError(
                         f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
@@ -71,13 +77,15 @@ class Invocation:
                 accepts_extra_args = command
 
         return cls(
-            steps=tuple(steps),
+            steps=tuple(step for step in steps if step.name not in skips),
+            skips=skips,
             accepts_extra_args=accepts_extra_args is not None,
             grace_period=grace_period,
             console=console,
         )
 
     steps: tuple[Command | Task, ...]
+    skips: Container[str]
     accepts_extra_args: bool
     grace_period: float
     console: Console
@@ -211,8 +219,12 @@ class Invocation:
             serial_errors: list[ExecutionError] = []
             for member in group.members:
                 if isinstance(member, Command):
+                    if member.name in self.skips:
+                        continue
                     error = await self._invoke_command_sync(member, *extra_args, prefix=prefix)
                 elif isinstance(member, Task):
+                    if member.name in self.skips:
+                        continue
                     error = await self._invoke_group(
                         task_name, member.steps, *extra_args, serial=True, exit_style=exit_style
                     )
@@ -255,13 +267,15 @@ class Invocation:
             item: Command | Task | Group,
         ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes] | ExecutionError | None]]:
             if isinstance(item, Command):
-                yield asyncio.create_task(invoke_command_captured(item))
+                if item.name not in self.skips:
+                    yield asyncio.create_task(invoke_command_captured(item))
             elif isinstance(item, Task):
-                yield asyncio.create_task(
-                    self._invoke_group(
-                        task_name, item.steps, *extra_args, serial=True, exit_style=exit_style
+                if item.name not in self.skips:
+                    yield asyncio.create_task(
+                        self._invoke_group(
+                            task_name, item.steps, *extra_args, serial=True, exit_style=exit_style
+                        )
                     )
-                )
             else:
                 yield asyncio.create_task(
                     self._invoke_group(
@@ -272,6 +286,7 @@ class Invocation:
         parallel_steps = " ".join(
             f"{len(member.members)} serial steps" if isinstance(member, Group) else member.name
             for member in group.members
+            if isinstance(member, Group) or member.name not in self.skips
         )
         message = f"Concurrently executing {color.bold(parallel_steps)}..."
         await self.console.aprint(f"{prefix} {color.magenta(message)}", use_stderr=True)

@@ -10,7 +10,7 @@ from dev_cmd.model import Command
 
 def test_invocation_create_no_extra_args():
     command = Command("foo", args=())
-    invocation = Invocation.create(command, grace_period=1.0)
+    invocation = Invocation.create(command, skips=(), grace_period=1.0)
     assert not invocation.accepts_extra_args
     assert (command,) == invocation.steps
 
@@ -18,7 +18,7 @@ def test_invocation_create_no_extra_args():
 def test_invocation_create_accepts_extra_args():
     foo = Command("foo", args=(), accepts_extra_args=True)
     bar = Command("bar", args=(), accepts_extra_args=False)
-    invocation = Invocation.create(foo, bar, grace_period=1.0)
+    invocation = Invocation.create(foo, bar, skips=(), grace_period=1.0)
     assert invocation.accepts_extra_args
     assert foo, bar == invocation.steps
 
@@ -33,4 +33,8 @@ def test_invocation_create_multiple_extra_args():
             r"invocation and command 'foo' already does."
         ),
     ):
-        Invocation.create(foo, bar, grace_period=1.0)
+        Invocation.create(foo, bar, skips=(), grace_period=1.0)
+
+    invocation = Invocation.create(foo, bar, skips=["foo"], grace_period=1.0)
+    assert invocation.accepts_extra_args
+    assert tuple([bar]) == invocation.steps

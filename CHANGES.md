@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.10.0
+
+Add support for skipping task steps with `-s` / `--skip`.
+
 ## 0.9.3
 
 Fix `dev-cmd` handling of execution errors. Previously an uncaught exception assigning

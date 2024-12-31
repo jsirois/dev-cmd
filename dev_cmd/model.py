@@ -5,9 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from functools import cached_property
 from pathlib import PurePath
-from typing import Any
+from typing import Any, Container
 
 
 @dataclass(frozen=True)
@@ -23,14 +22,15 @@ class Command:
 class Group:
     members: tuple[Command | Task | Group, ...]
 
-    @cached_property
-    def accepts_extra_args(self) -> Command | None:
+    def accepts_extra_args(self, skips: Container[str]) -> Command | None:
         for member in self.members:
-            if member.accepts_extra_args:
-                if isinstance(member, Command):
+            if isinstance(member, (Command, Task)) and member.name in skips:
+                continue
+            if isinstance(member, Command):
+                if member.accepts_extra_args:
                     return member
-                else:
-                    return member.accepts_extra_args
+            else:
+                return member.accepts_extra_args(skips)
         return None
 
 
@@ -39,9 +39,8 @@ class Task:
     name: str
     steps: Group
 
-    @cached_property
-    def accepts_extra_args(self) -> Command | None:
-        return self.steps.accepts_extra_args
+    def accepts_extra_args(self, skips: Container[str]) -> Command | None:
+        return self.steps.accepts_extra_args(skips)
 
 
 class ExitStyle(Enum):
