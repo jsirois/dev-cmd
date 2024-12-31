@@ -24,13 +24,11 @@ class Group:
 
     def accepts_extra_args(self, skips: Container[str]) -> Command | None:
         for member in self.members:
-            if isinstance(member, (Command, Task)) and member.name in skips:
-                continue
             if isinstance(member, Command):
-                if member.accepts_extra_args:
+                if member.accepts_extra_args and member.name not in skips:
                     return member
-            else:
-                return member.accepts_extra_args(skips)
+            elif command := member.accepts_extra_args(skips):
+                return command
         return None
 
 
@@ -40,6 +38,8 @@ class Task:
     steps: Group
 
     def accepts_extra_args(self, skips: Container[str]) -> Command | None:
+        if self.name in skips:
+            return None
         return self.steps.accepts_extra_args(skips)
 
 

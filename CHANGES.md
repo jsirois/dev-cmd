@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.10.1
+
+Fix `-s` / `--skip` interaction with extra args support.
+
 ## 0.10.0
 
 Add support for skipping task steps with `-s` / `--skip`.
