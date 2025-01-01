@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.10.2
+
+FIx missing typing-extensions dependency and update README.
+
 ## 0.10.1
 
 Fix `-s` / `--skip` interaction with extra args support.

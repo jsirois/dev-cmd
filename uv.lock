@@ -30,13 +30,14 @@ wheels = [
 
 [[package]]
 name = "dev-cmd"
-version = "0.10.1"
+version = "0.10.2"
 source = { editable = "." }
 dependencies = [
     { name = "aioconsole" },
     { name = "ansicolors" },
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 
 [package.dev-dependencies]
@@ -54,6 +55,7 @@ requires-dist = [
     { name = "ansicolors" },
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 
 [package.metadata.requires-dev]

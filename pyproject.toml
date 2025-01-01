@@ -10,6 +10,7 @@ dependencies = [
     "ansicolors",
     "colorama; sys_platform == 'win32'",
     "tomli; python_version < '3.11'",
+    "typing-extensions"
 ]
 
 authors = [
