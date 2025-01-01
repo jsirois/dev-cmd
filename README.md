@@ -166,7 +166,7 @@ bring in those commands, like `ruff` or `pytest`. This is done differently in di
 Below are some commonly used tools and the configuration they require along with the command used to
 invoke `dev-cmd` using each tool.
 
-### `pdm` and `uv`
+### [PDM](https://pdm-project.org/) and [uv](https://github.com/astral-sh/uv)
 
 Add `dev-cmd` as well as any other needed dependencies to the `dev` dependency group:
 ```toml
@@ -176,7 +176,7 @@ dev = ["dev-cmd", "pytest", "ruff"]
 You can then execute `dev-cmd` with `uv run dev-cmd [args...]`. For `pdm` you'll have to 1st run
 `pdm install` to make `dev-cmd`, `pytest` and `ruff` available.
 
-### `poetry`
+### [Poetry](https://python-poetry.org/)
 
 Add `dev-cmd` as well as any other needed dependencies to the dev dependencies:
 ```toml
@@ -188,7 +188,7 @@ ruff = "*"
 
 Run `poetry install` and then you can run `poetry run dev-cmd [args...]`.
 
-### `Hatch`
+### [Hatch](https://hatch.pypa.io/)
 
 Add `dev-cmd` as well as any other needed dependencies to an environment's dependencies. Here we use
 the `default` environment for convenience:
