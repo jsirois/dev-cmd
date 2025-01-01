@@ -154,7 +154,7 @@ The `dev-cmd` tool supports several command line options to control execution in
 can override the configured `exit-style` with `-k` / `--keep-going` (which is equivalent to
 `exit-style = "end"`) or `-X` / `--exit-style`. You can also cause all steps named on the command
 line to be run in parallel instead of in order with `-p` / `--parallel`. Finally, you can skip steps
-with `-s` / `--skip`. This can be useful when running a task like `check` defined above that
+with `-s` / `--skip`. This can be useful when running a task like `checks` defined above that
 includes several commands, but one or more you'd like to skip. This would run all checks except
 the tests:
 ```console
