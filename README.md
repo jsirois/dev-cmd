@@ -166,7 +166,7 @@ bring in those commands, like `ruff` or `pytest`. This is done differently in di
 Below are some commonly used tools and the configuration they require along with the command used to
 invoke `dev-cmd` using each tool.
 
-### [PDM](https://pdm-project.org/) and [uv](https://github.com/astral-sh/uv)
+### [PDM](https://pdm-project.org/) and [uv](https://docs.astral.sh/uv/)
 
 Add `dev-cmd` as well as any other needed dependencies to the `dev` dependency group:
 ```toml
