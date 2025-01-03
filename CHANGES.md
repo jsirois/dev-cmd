@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.10.4
+
+Fix `-p` / `--parallel` handling of tasks - no longer flatten them.
+
 ## 0.10.3
 
 Gracefully handle keyboard interrupt and kill in-flight processes with logging.

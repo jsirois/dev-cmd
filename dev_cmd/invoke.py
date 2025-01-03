@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import os
 import sys
 from asyncio import CancelledError
@@ -12,21 +11,13 @@ from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Container, Iterator
+from typing import Any, AsyncIterator, Container
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
 from dev_cmd.console import Console
 from dev_cmd.errors import ExecutionError, InvalidModelError
 from dev_cmd.model import Command, ExitStyle, Group, Task
-
-
-def _flatten(step: Command | Group | Task) -> Iterator[Command | Group]:
-    if isinstance(step, Task):
-        for step in step.steps.members:
-            yield from _flatten(step)
-    else:
-        yield step
 
 
 def _step_prefix(step_name: str) -> str:
@@ -134,15 +125,7 @@ class Invocation:
     ) -> None:
         async with _guarded_stdin(), self._guarded_ctrl_c():
             if error := await self._invoke_group(
-                "*",
-                Group(
-                    members=tuple(
-                        itertools.chain.from_iterable(_flatten(task) for task in self.steps)
-                    )
-                ),
-                *extra_args,
-                serial=False,
-                exit_style=exit_style,
+                "*", Group(members=self.steps), *extra_args, serial=False, exit_style=exit_style
             ):
                 await self._terminate_in_flight_processes()
                 raise error
