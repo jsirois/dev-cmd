@@ -8,6 +8,7 @@ import os
 import sys
 import time
 from argparse import ArgumentParser
+from asyncio import CancelledError
 from dataclasses import dataclass
 from typing import Any, Collection, Iterable
 
@@ -275,6 +276,10 @@ def main() -> Any:
             return e.exit_code
         prefix = f"{color.red('dev-cmd')} {color.color(e.step_name, fg='red', style='bold')}"
         return f"{prefix}] {color.red(e.message)}"
+    except (CancelledError, KeyboardInterrupt):
+        if console.quiet:
+            return 1
+        return f"{color.red('dev-cmd')}] {color.color('Cancelled', fg='red', style='bold')}"
     finally:
         if not console.quiet:
             summary_color = "green" if success else "red"

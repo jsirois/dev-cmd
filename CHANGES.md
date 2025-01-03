@@ -1,8 +1,12 @@
 # Release Notes
 
+## 0.10.3
+
+Gracefully handle keyboard interrupt and kill in-flight processes with logging.
+
 ## 0.10.2
 
-FIx missing typing-extensions dependency and update README.
+Fix missing typing-extensions dependency and update README.
 
 ## 0.10.1
 

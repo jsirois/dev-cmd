@@ -7,9 +7,10 @@ import asyncio
 import itertools
 import os
 import sys
+from asyncio import CancelledError
 from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Container, Iterator
 
@@ -32,8 +33,8 @@ def _step_prefix(step_name: str) -> str:
     return color.cyan(f"dev-cmd {color.bold(step_name)}]")
 
 
-@contextmanager
-def _guarded_stdin() -> Iterator[None]:
+@asynccontextmanager
+async def _guarded_stdin() -> AsyncIterator[None]:
     # N.B.: This allows interactive async processes to properly read from stdin.
     # TODO(John Sirois): Come to understand why this works.
     sys.stdin = os.devnull
@@ -89,10 +90,18 @@ class Invocation:
     accepts_extra_args: bool
     grace_period: float
     console: Console
-    _in_flight_processes: set[Process] = field(default_factory=set, init=False)
+    _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
+
+    @asynccontextmanager
+    async def _guarded_ctrl_c(self) -> AsyncIterator[None]:
+        try:
+            yield
+        except (CancelledError, KeyboardInterrupt):
+            await self._terminate_in_flight_processes()
+            raise
 
     async def invoke(self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP) -> None:
-        with _guarded_stdin():
+        async with _guarded_stdin(), self._guarded_ctrl_c():
             errors: list[ExecutionError] = []
             for task in self.steps:
                 if isinstance(task, Command):
@@ -123,7 +132,7 @@ class Invocation:
     async def invoke_parallel(
         self, *extra_args: str, exit_style: ExitStyle = ExitStyle.AFTER_STEP
     ) -> None:
-        with _guarded_stdin():
+        async with _guarded_stdin(), self._guarded_ctrl_c():
             if error := await self._invoke_group(
                 "*",
                 Group(
@@ -140,7 +149,12 @@ class Invocation:
 
     async def _terminate_in_flight_processes(self) -> None:
         while self._in_flight_processes:
-            process = self._in_flight_processes.pop()
+            process, command = self._in_flight_processes.popitem()
+            await self.console.aprint(
+                color.color(
+                    f"Terminating in-flight process {process.pid} of {command.name}...", fg="gray"
+                )
+            )
             if self.grace_period <= 0:
                 process.kill()
                 await process.wait()
@@ -150,7 +164,7 @@ class Invocation:
                     [asyncio.create_task(process.wait())], timeout=self.grace_period
                 )
                 if pending:
-                    self.console.print(
+                    await self.console.aprint(
                         color.yellow(
                             f"Process {process.pid} has not responded to a termination request after "
                             f"{self.grace_period:.2f}s, killing..."
@@ -184,7 +198,7 @@ class Invocation:
             env=env,
             **subprocess_kwargs,
         )
-        self._in_flight_processes.add(process)
+        self._in_flight_processes[process] = command
         return process
 
     async def _invoke_command_sync(
@@ -200,7 +214,7 @@ class Invocation:
             return process_or_error
 
         returncode = await process_or_error.wait()
-        self._in_flight_processes.discard(process_or_error)
+        self._in_flight_processes.pop(process_or_error, None)
         if returncode == 0:
             return None
 
@@ -260,7 +274,7 @@ class Invocation:
                 return proc_or_error
 
             output, _ = await proc_or_error.communicate()
-            self._in_flight_processes.discard(proc_or_error)
+            self._in_flight_processes.pop(proc_or_error, None)
             return command, await proc_or_error.wait(), output
 
         async def iter_tasks(
