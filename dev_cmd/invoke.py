@@ -174,6 +174,11 @@ class Invocation:
         if USE_COLOR and not any(color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR")):
             env.setdefault("FORCE_COLOR", "1")
 
+        if args[0].endswith(".py"):
+            args.insert(0, sys.executable)
+        elif "python" == args[0]:
+            args[0] = sys.executable
+
         process = await asyncio.create_subprocess_exec(
             args[0],
             *args[1:],

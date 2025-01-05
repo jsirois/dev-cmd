@@ -27,6 +27,11 @@ greet = ["python", "-c", "import os; print(f'Hello from {os.getcwd()!r}.')"]
 More on execution in various environments [below](#Execution), but you can run the greet command
 with, for example `uv run dev-cmd greet`.
 
+There are two special argv0's you can use in your commands:
+1. "python": This will be mapped to the Python interpreter that is executing `dev-cmd`.
+2. A file name ending in ".py": This will be assumed to be a python script, and it will be run using
+   the Python interpreter that is executing `dev-cmd`.
+
 You can define as many commands as you want. They will all run from the project root directory (the
 directory containing the `pyproject.toml` the commands are defined in) and accept no arguments
 besides those defined in the command. You can gain further control over the command by defining it
