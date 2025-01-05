@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.11.0
+
+Fix commands with an argv0 of "python" on Windows and add support for argv0 being a Python script.
+
 ## 0.10.4
 
 Fix `-p` / `--parallel` handling of tasks - no longer flatten them.

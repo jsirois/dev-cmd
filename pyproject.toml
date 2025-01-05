@@ -60,6 +60,7 @@ include = ["dev_cmd*"]
 
 [dependency-groups]
 dev = [
+    "ansicolors",
     "mypy",
     "pytest",
     "ruff",

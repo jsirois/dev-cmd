@@ -30,7 +30,7 @@ wheels = [
 
 [[package]]
 name = "dev-cmd"
-version = "0.10.4"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioconsole" },
@@ -42,6 +42,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "ansicolors" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -60,6 +61,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "ansicolors" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
