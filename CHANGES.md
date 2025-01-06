@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.11.1
+
+Improve error message when the project root cannot be discovered.
+
 ## 0.11.0
 
 Fix commands with an argv0 of "python" on Windows and add support for argv0 being a Python script.

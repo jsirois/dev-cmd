@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from importlib import metadata
 from importlib.metadata import PackageNotFoundError
@@ -56,6 +57,10 @@ def find_pyproject_toml() -> PyProjectToml:
         candidate = candidate.parent
 
     raise InvalidProjectError(
-        f"Failed to find the project root searching from {start}. No `pyproject.toml` file found "
-        f"at its level or above."
+        os.linesep.join(
+            (
+                f"Failed to find the project root searching from directory '{start.resolve()}'.",
+                "No `pyproject.toml` file found at its level or above.",
+            )
+        )
     )
