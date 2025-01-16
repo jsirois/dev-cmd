@@ -9,6 +9,7 @@ dependencies = [
     "aioconsole",
     "ansicolors",
     "colorama; sys_platform == 'win32'",
+    "packaging",
     "tomli; python_version < '3.11'",
     "typing-extensions"
 ]
@@ -65,6 +66,7 @@ dev = [
     "pytest",
     "ruff",
     "types-colorama",
+    "types-setuptools",
     "types-tqdm",
 ]
 
@@ -83,39 +85,22 @@ line-length = 100
 extend-select = ["I"]
 
 [tool.dev-cmd.commands]
-clean = [
-    "python",
-    "-c",
-    """\
-import os
-import shutil
-import sys
-
-import colors
-
-
-# The MyPy cache can get corrupted by swithing Pythons with `uv ... --python ...` and re-building
-# the .venv is cheap; so we clean these as a more restricted form than `git clean -fdx`
-for cache_dir in '.mypy_cache', '.venv':
-    if os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir, ignore_errors=True)
-        print(colors.green(f"Removed directory `{cache_dir}`."), file=sys.stderr)
-    """
-]
-
 fmt = ["ruff", "format"]
 check-fmt = ["ruff", "format", "--diff"]
 
 lint = ["ruff", "check", "--fix"]
 check-lint = ["ruff", "check"]
 
-type-check = ["mypy", "dev_cmd", "tests"]
-type-check-38 = ["mypy", "--python-version", "3.8", "dev_cmd", "tests"]
-type-check-39 = ["mypy", "--python-version", "3.9", "dev_cmd", "tests"]
-type-check-310 = ["mypy", "--python-version", "3.10", "dev_cmd", "tests"]
-type-check-311 = ["mypy", "--python-version", "3.11", "dev_cmd", "tests"]
-type-check-312 = ["mypy", "--python-version", "3.12", "dev_cmd", "tests"]
-type-check-313 = ["mypy", "--python-version",  "3.13", "dev_cmd", "tests"]
+type-check = [
+    "mypy",
+    "--python-version",
+    "{-py:{markers.python_version}}",
+    "--cache-dir",
+    ".mypy_cache_{markers.python_version}",
+    "setup.py",
+    "dev_cmd",
+    "tests"
+]
 
 [tool.dev-cmd.commands.test]
 args = ["pytest"]
@@ -128,15 +113,7 @@ checks = [
     "lint",
     # Parallelizing the type checks and test is safe (they don't modify files), and it nets a ~3x
     # speedup over running them all serially.
-    [
-        "type-check-38",
-        "type-check-39",
-        "type-check-310",
-        "type-check-311",
-        "type-check-312",
-        "type-check-313",
-        "test"
-    ],
+    ["type-check-py3.{8..13}", "test"],
 ]
 
 # None of the CI checks modify files; so they can all be run in parallel which nets a ~1.5x speedup.

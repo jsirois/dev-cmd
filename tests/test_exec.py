@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 import subprocess
+import sys
 from pathlib import Path, PurePath
 from textwrap import dedent
 
@@ -26,20 +27,26 @@ def project_dir() -> PurePath:
 @pytest.fixture
 def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePath) -> Path:
     monkeypatch.chdir(tmp_path)
+
+    # Setting these silences spurious warnings using uv under uv in tests.
+    monkeypatch.setenv("UV_LINK_MODE", "copy")
+    monkeypatch.delenv("VIRTUAL_ENV")
+
     pyproject_toml_file = tmp_path / "pyproject.toml"
     pyproject_toml_file.write_text(
         dedent(
             f"""
-                [project]
-                name = "script-test"
-                version = "0.1.0"
+            [project]
+            name = "script-test"
+            version = "0.1.0"
+            requires-python = "=={".".join(map(str, sys.version_info[:3]))}"
 
-                [dependency-groups]
-                dev = [
-                    "ansicolors",
-                    "dev-cmd @ {project_dir.as_posix()}",
-                ]
-                """
+            [dependency-groups]
+            dev = [
+                "ansicolors",
+                "dev-cmd @ {project_dir.as_posix()}",
+            ]
+            """
         )
     )
     return pyproject_toml_file

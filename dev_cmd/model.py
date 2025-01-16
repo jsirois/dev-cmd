@@ -9,6 +9,10 @@ from pathlib import PurePath
 from typing import Any, Container
 
 
+class Factor(str):
+    pass
+
+
 @dataclass(frozen=True)
 class Command:
     name: str

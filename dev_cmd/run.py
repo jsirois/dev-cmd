@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 import sys
 import time
@@ -16,6 +17,7 @@ from dev_cmd import __version__, color
 from dev_cmd.color import ColorChoice
 from dev_cmd.console import Console
 from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
+from dev_cmd.expansion import expand
 from dev_cmd.invoke import Invocation
 from dev_cmd.model import Configuration, ExitStyle
 from dev_cmd.parse import parse_dev_config
@@ -225,9 +227,10 @@ def _parse_args() -> Options:
     options = parser.parse_args(args)
     color.set_color(ColorChoice(options.color))
 
-    parallel = options.parallel and len(options.tasks) > 1
+    tasks = tuple(itertools.chain.from_iterable(expand(task) for task in options.tasks))
+    parallel = options.parallel and len(tasks) > 1
     if options.parallel and not parallel and not options.quiet:
-        single_task = repr(options.tasks[0]) if options.tasks else "the default"
+        single_task = repr(tasks[0]) if tasks else "the default"
         print(
             color.yellow(
                 f"A parallel run of top-level tasks was requested but only one was requested, "
@@ -236,7 +239,7 @@ def _parse_args() -> Options:
         )
 
     return Options(
-        tasks=tuple(options.tasks),
+        tasks=tasks,
         skips=frozenset(options.skips),
         quiet=options.quiet,
         parallel=parallel,
@@ -253,7 +256,7 @@ def main() -> Any:
     console = Console(quiet=options.quiet)
     try:
         pyproject_toml = find_pyproject_toml()
-        config = parse_dev_config(pyproject_toml)
+        config = parse_dev_config(pyproject_toml, *options.tasks)
         _run(
             config,
             *options.tasks,

@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.12.0
+
+This change adds support for command parametrization via environment variables, Python interpreter
+marker environment values and factors similar to those found in [tox](https://tox.wiki/)
+configuration.
+
 ## 0.11.1
 
 Improve error message when the project root cannot be discovered.

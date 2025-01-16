@@ -30,12 +30,13 @@ wheels = [
 
 [[package]]
 name = "dev-cmd"
-version = "0.11.1"
+version = "0.12.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioconsole" },
     { name = "ansicolors" },
     { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "packaging" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "typing-extensions" },
 ]
@@ -47,6 +48,7 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "types-colorama" },
+    { name = "types-setuptools" },
     { name = "types-tqdm" },
 ]
 
@@ -55,6 +57,7 @@ requires-dist = [
     { name = "aioconsole" },
     { name = "ansicolors" },
     { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "packaging" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "typing-extensions" },
 ]
@@ -66,6 +69,7 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "types-colorama" },
+    { name = "types-setuptools" },
     { name = "types-tqdm" },
 ]
 
@@ -258,6 +262,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fa/3c/4f2a430c01a22abd49a583b6b944173e39e7d01b688190a5618bd59a2e22/types-requests-2.32.0.20241016.tar.gz", hash = "sha256:0d9cad2f27515d0e3e3da7134a1b6f28fb97129d86b867f24d9c726452634d95", size = 18065 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/01/485b3026ff90e5190b5e24f1711522e06c79f4a56c8f4b95848ac072e20f/types_requests-2.32.0.20241016-py3-none-any.whl", hash = "sha256:4195d62d6d3e043a4eaaf08ff8a62184584d2e8684e9d2aa178c7915a7da3747", size = 15836 },
+]
+
+[[package]]
+name = "types-setuptools"
+version = "75.8.0.20250110"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/42/5713e90d4f9683f2301d900f33e4fc2405ad8ac224dda30f6cb7f4cd215b/types_setuptools-75.8.0.20250110.tar.gz", hash = "sha256:96f7ec8bbd6e0a54ea180d66ad68ad7a1d7954e7281a710ea2de75e355545271", size = 48185 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/a3/dbfd106751b11c728cec21cc62cbfe7ff7391b935c4b6e8f0bdc2e6fd541/types_setuptools-75.8.0.20250110-py3-none-any.whl", hash = "sha256:a9f12980bbf9bcdc23ecd80755789085bad6bfce4060c2275bc2b4ca9f2bc480", size = 71521 },
 ]
 
 [[package]]

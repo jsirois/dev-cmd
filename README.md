@@ -55,6 +55,8 @@ project-dir/
     test-support/
 ```
 
+#### Pass Through Args
+
 The `accepts-extra-args = true` configuration allows for passing extra args to pytest like so:
 ```console
 uv run dev-cmd test -- -vvs
@@ -86,6 +88,32 @@ uv run dev-cmd test fmt lint -- -vvs
 ```
 The order commands are run in does not affect where extra args are passed.
 
+#### Parameterization
+
+Both command arguments and env values can be parameterized with values from the execution
+environment. Parameters are introduced in between brackets with an optional default value:
+`{<key>(:<default>)?}`. Parameters can draw from three sources:
+1. Environment variables via `{env.<name>}`; e.g.: `{env.HOME}`
+2. The current Python interpreter's marker environment via `{markers.<name>}`; e.g.:
+   `{markers.python_version}`
+3. Factors via `{-<name>}`; e.g.: `{-py:{markers.python_version}}`
+
+In all three cases, the parameter name can itself come from a nested parameterization; e.g.:
+`{markers.{-marker:{env.MARKER:python_version}}}` selects the environment marker value for the
+environment marker named by the `marker` factor if defined; otherwise the `MARKER` environment
+variable if defined and finally falling back to `python_version` if none of these are defined.
+
+The available Python marker environment variables are detailed in [PEP-508](
+https://peps.python.org/pep-0508/#environment-markers).
+
+Factors are introduced as suffixes to command names and are inspired by and similar to those found
+in [tox](https://tox.wiki/) configuration. If a command is named `test` but the command is invoked
+as `test-py3.12`, the `-py3.12` factor will be defined. The value of `3.12` could then be read via
+the `{-py}` factor parameter placeholder in the command arguments or env values. The factor name
+prefix will be stripped from the factor argument to produce the substituted value. As a consequence,
+you want to ensure the factor names you use are non-overlapping or else an error will be raised due
+to ambiguity in which factor argument should be applied.
+
 ### Tasks
 
 Tasks are defined in their own table and compose two or more commands to implement some larger task.
@@ -110,6 +138,8 @@ With that configuration, executing `uv run dev-cmd tidy` will execute the `fmt` 
 the `lint` command in sequence. Each entry in the list is referred to as a step and is the name of
 any command or any task defined earlier in the file. This last restriction naturally avoids cycles.
 
+#### Parallelization
+
 Steps are run in sequence by default and execution halts at the 1st step to fail by default. See
 [Execution](#Execution) for options to control these defaults. To cause two or more steps in a task
 to run in parallel, enclose them in a sub-list. Continuing with the example above, but eliding the
@@ -128,6 +158,27 @@ When `uv run dev-cmd checks` is run, The elements in the 1st nested list are aga
 This time the 1st element is a list: `["fmt", "lint]`. Each layer of list nesting alternates between
 running serially and running in parallel; so `fmt` and `list` will be run serially in that order
 while they race `test` as a group in parallel.
+
+#### Expansion
+
+The `dev-cmd` runner supports expansion of steps via enumerated placeholders like `{a,b,c}` and
+range placeholders like `{0..3}`. Whether supplied as step names via the command line or in task
+lists, these placeholders will result in the surrounding step name being expanded into two or more
+steps. For example, the following configuration results in a type-checks task that runs `mypy` in
+parallel checking against Python 3.8 through 3.13:
+```toml
+[tool.dev-cmd.commands]
+type-check = ["mypy", "--python", "{-py:{markers.python_version}}"]
+
+[tool.dev-cmd.tasks]
+type-checks = [["type-check-py3.{8..13}"]]
+```
+
+You could also ad-hoc check against just Python 3.8 and 3.9 in parallel via the following, even if
+your shell does not do parameter expansion of this sort:
+```console
+uv run dev-cmd -p 'type-check-py3.{8,9}'
+```
 
 ### Global Options
 

@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+import itertools
 import os
+from collections import defaultdict
 from pathlib import Path
-from typing import Any, Container, Iterator, Mapping, cast
+from typing import Any, Container, Iterable, Iterator, Mapping, Set, cast
 
 from dev_cmd.errors import InvalidModelError
-from dev_cmd.model import Command, Configuration, ExitStyle, Group, Task
+from dev_cmd.expansion import expand
+from dev_cmd.model import Command, Configuration, ExitStyle, Factor, Group, Task
+from dev_cmd.placeholder import Environment
 from dev_cmd.project import PyProjectToml
 
 
@@ -30,7 +34,11 @@ def _assert_dict_str_keys(obj: Any, *, path: str) -> dict[str, Any]:
     return cast("dict[str, Any]", obj)
 
 
-def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Iterator[Command]:
+def _parse_commands(
+    commands: dict[str, Any] | None,
+    required_steps: dict[str, list[tuple[Factor, ...]]],
+    project_dir: Path,
+) -> Iterator[Command]:
     if not commands:
         raise InvalidModelError(
             "There must be at least one entry in the [tool.dev-cmd.commands] table to run "
@@ -89,9 +97,43 @@ def _parse_commands(commands: dict[str, Any] | None, project_dir: Path) -> Itera
                     f"Unexpected configuration keys in the [tool.dev-cmd.commands.{name}] table: "
                     f"{' '.join(data)}"
                 )
-        yield Command(
-            name, args, extra_env=tuple(extra_env), cwd=cwd, accepts_extra_args=accepts_extra_args
-        )
+
+        env = Environment()
+        for factors in required_steps[name]:
+            factors_suffix = f"-{'-'.join(factors)}" if factors else ""
+
+            used_factors: set[Factor] = set()
+
+            def substitute(text: str) -> str:
+                substituted, consumed_factors = env.substitute(text, *factors)
+                used_factors.update(consumed_factors)
+                return substituted
+
+            substituted_args = [substitute(arg) for arg in args]
+            substituted_extra_env = [(key, substitute(value)) for key, value in extra_env]
+
+            unused_factors = [factor for factor in factors if factor not in used_factors]
+            if unused_factors:
+                if len(unused_factors) == 1:
+                    raise InvalidModelError(
+                        f"The {name} command was parameterized with unused factor "
+                        f"'-{unused_factors[0]}'."
+                    )
+                else:
+                    head = ", ".join(f"'-{factor}'" for factor in unused_factors[:-1])
+                    tail = f"'-{factors[-1]}'"
+                    raise InvalidModelError(
+                        f"The {name} command was parameterized with unused factors "
+                        f"{head} and {tail}."
+                    )
+
+            yield Command(
+                f"{name}{factors_suffix}",
+                tuple(substituted_args),
+                extra_env=tuple(substituted_extra_env),
+                cwd=cwd,
+                accepts_extra_args=accepts_extra_args,
+            )
 
 
 def _parse_group(
@@ -104,26 +146,31 @@ def _parse_group(
     members: list[Command | Task | Group] = []
     for index, member in enumerate(group):
         if isinstance(member, str):
-            try:
-                members.append(commands.get(member) or tasks_defined_so_far[member])
-            except KeyError:
-                if member in all_task_names:
-                    raise InvalidModelError(
-                        f"The [tool.dev-cmd.tasks] step `{task}[{index}]` forward-references task "
-                        f"{member!r}. Tasks can only reference other tasks that are defined "
-                        f"earlier in the file"
+            for item in expand(member):
+                try:
+                    members.append(commands.get(item) or tasks_defined_so_far[item])
+                except KeyError:
+                    if item in all_task_names:
+                        raise InvalidModelError(
+                            f"The [tool.dev-cmd.tasks] step `{task}[{index}]` forward-references "
+                            f"task {item!r}. Tasks can only reference other tasks that are defined "
+                            f"earlier in the file"
+                        )
+                    available_tasks = (
+                        " ".join(sorted(tasks_defined_so_far)) if tasks_defined_so_far else "<None>"
                     )
-                raise InvalidModelError(
-                    os.linesep.join(
-                        (
-                            f"The [tool.dev-cmd.tasks] step `{task}[{index}]` is not the name of a "
-                            f"defined command or task: {member!r}",
-                            "",
-                            f"Available tasks: {' '.join(sorted(tasks_defined_so_far)) if tasks_defined_so_far else '<None>'}",
-                            f"Available commands: {' '.join(sorted(commands))}",
+                    available_commands = " ".join(sorted(commands))
+                    raise InvalidModelError(
+                        os.linesep.join(
+                            (
+                                f"The [tool.dev-cmd.tasks] step `{task}[{index}]` is not the name "
+                                f"of a defined command or task: {item!r}",
+                                "",
+                                f"Available tasks: {available_tasks}",
+                                f"Available commands: {available_commands}",
+                            )
                         )
                     )
-                )
         elif isinstance(member, list):
             members.append(
                 _parse_group(
@@ -235,7 +282,33 @@ def _parse_grace_period(grace_period: Any) -> float | None:
     return float(grace_period)
 
 
-def parse_dev_config(pyproject_toml: PyProjectToml) -> Configuration:
+def _iter_all_required_step_names(
+    value: Any, tasks_data: Mapping[str, Any], seen: Set[str]
+) -> Iterator[str]:
+    if isinstance(value, str) and value not in seen:
+        for name in expand(value):
+            seen.add(name)
+            yield name
+            if task_data := tasks_data.get(name):
+                yield from _iter_all_required_step_names(task_data, tasks_data, seen)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_all_required_step_names(item, tasks_data, seen)
+
+
+def _gather_all_required_step_names(
+    requested_step_names: Iterable[str], tasks_data: Mapping[str, Any]
+) -> tuple[str, ...]:
+    required_step_names: list[str] = []
+    seen: set[str] = set()
+    for requested_step_name in dict.fromkeys(itertools.chain(requested_step_names, tasks_data)):
+        required_step_names.extend(
+            _iter_all_required_step_names(requested_step_name, tasks_data, seen)
+        )
+    return tuple(dict.fromkeys(required_step_names))
+
+
+def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Configuration:
     pyproject_data = pyproject_toml.parse()
     try:
         dev_cmd_data = _assert_dict_str_keys(
@@ -251,11 +324,33 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Configuration:
         data = dev_cmd_data.pop(key, None)
         return _assert_dict_str_keys(data, path=path) if data else None
 
+    commands_data = pop_dict("commands", path="[tool.dev-cmd.commands]") or {}
+    tasks_data = pop_dict("tasks", path="[tool.dev-cmd.tasks]") or {}
+    default_step_name = dev_cmd_data.pop("default", None)
+
+    required_steps: defaultdict[str, list[tuple[Factor, ...]]] = defaultdict(list)
+    required_step_names = _gather_all_required_step_names(requested_steps, tasks_data)
+    known_names = tuple(itertools.chain(commands_data, tasks_data))
+    for required_step_name in required_step_names:
+        if required_step_name in known_names:
+            required_steps[required_step_name].append(())
+            continue
+        for known_name in known_names:
+            if not required_step_name.startswith(f"{known_name}-"):
+                continue
+
+            required_steps[known_name].append(
+                tuple(
+                    Factor(factor)
+                    for factor in required_step_name[len(known_name) + 1 :].split("-")
+                )
+            )
+            break
+
     commands = {
         cmd.name: cmd
         for cmd in _parse_commands(
-            pop_dict("commands", path="[tool.dev-cmd.commands]"),
-            project_dir=pyproject_toml.path.parent,
+            commands_data, required_steps, project_dir=pyproject_toml.path.parent
         )
     }
     if not commands:
@@ -264,11 +359,8 @@ def parse_dev_config(pyproject_toml: PyProjectToml) -> Configuration:
             "configured to use the dev task runner."
         )
 
-    tasks = {
-        task.name: task
-        for task in _parse_tasks(pop_dict("tasks", path="[tool.dev-cmd.tasks]"), commands)
-    }
-    default = _parse_default(dev_cmd_data.pop("default", None), commands, tasks)
+    tasks = {task.name: task for task in _parse_tasks(tasks_data, commands)}
+    default = _parse_default(default_step_name, commands, tasks)
     exit_style = _parse_exit_style(dev_cmd_data.pop("exit-style", None))
     grace_period = _parse_grace_period(dev_cmd_data.pop("grace-period", None))
 
