@@ -93,13 +93,11 @@ check-lint = ["ruff", "check"]
 
 type-check = [
     "mypy",
-    "--python-version",
-    "{-py:{markers.python_version}}",
-    "--cache-dir",
-    ".mypy_cache_{markers.python_version}",
+    "--python-version", "{-py:{markers.python_version}}",
+    "--cache-dir", ".mypy_cache_{markers.python_version}",
     "setup.py",
     "dev_cmd",
-    "tests"
+    "tests",
 ]
 
 [tool.dev-cmd.commands.test]

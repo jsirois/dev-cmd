@@ -30,7 +30,6 @@ wheels = [
 
 [[package]]
 name = "dev-cmd"
-version = "0.12.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioconsole" },
