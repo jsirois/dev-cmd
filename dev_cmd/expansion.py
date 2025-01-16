@@ -3,24 +3,12 @@
 
 from __future__ import annotations
 
-import itertools
 import math
 import re
-from collections import deque
-from typing import Iterable, Iterator, List, Tuple, TypeVar, Union
+from typing import List, Tuple, Union
 
 from dev_cmd import brace_substitution
 from dev_cmd.brace_substitution import Substituter
-
-T = TypeVar("T")
-
-
-def sliding_window(items: Iterable[T], size: int) -> Iterator[Tuple[T, ...]]:
-    iterator = iter(items)
-    window = deque(itertools.islice(iterator, size - 1), maxlen=size)
-    for x in iterator:
-        window.append(x)
-        yield tuple(window)
 
 
 class ExpandBraces(Substituter[List[Union[str, List[str]]], Tuple[str, ...]]):
@@ -52,7 +40,8 @@ class ExpandBraces(Substituter[List[Union[str, List[str]]], Tuple[str, ...]]):
                     work.append(item)
 
             expanded: list[str] = []
-            for prefix, item in sliding_window(["", *work], 2):
+            prefix: str | list[str] = ""
+            for item in work:
                 if isinstance(prefix, str):
                     if isinstance(item, str):
                         expanded.append(item)
@@ -68,6 +57,7 @@ class ExpandBraces(Substituter[List[Union[str, List[str]]], Tuple[str, ...]]):
                         expanded[-len(prefix) :] = [
                             f"{p}{atom}" for p in expanded[-len(prefix) :] for atom in item
                         ]
+                prefix = item
 
             state.append(expanded)
         else:
