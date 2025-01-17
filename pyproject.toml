@@ -84,6 +84,9 @@ line-length = 100
 [tool.ruff.lint]
 extend-select = ["I"]
 
+[tool.uv]
+required-version = ">=0.5.19"
+
 [tool.dev-cmd.commands]
 fmt = ["ruff", "format"]
 check-fmt = ["ruff", "format", "--diff"]
