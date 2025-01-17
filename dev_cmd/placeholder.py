@@ -62,6 +62,8 @@ class Environment(Substituter[State, str]):
                 )
             if matching_factors:
                 value = matching_factors[0][len(factor_name) :]
+                if value.startswith(":"):
+                    value = value[1:]
                 state.used_factors.append(matching_factors[0])
             else:
                 value = default

@@ -65,11 +65,11 @@ def test_substitute_markers(env) -> None:
 
 
 def test_substitute_factors(env: Environment) -> None:
-    factors = Factor("a1"), Factor("b2")
+    factors = Factor("a1"), Factor("b:2")
     assert ("1", (Factor("a1"),)) == env.substitute("{-a}", *factors)
-    assert ("2", (Factor("b2"),)) == env.substitute("{-b}", *factors)
-    assert ("12", (Factor("a1"), Factor("b2"))) == env.substitute("{-a}{-b}", *factors)
-    assert ("123", (Factor("a1"), Factor("b2"))) == env.substitute("{-a}{-b}{-c:3}", *factors)
+    assert ("2", (Factor("b:2"),)) == env.substitute("{-b}", *factors)
+    assert ("12", (Factor("a1"), Factor("b:2"))) == env.substitute("{-a}{-b}", *factors)
+    assert ("123", (Factor("a1"), Factor("b:2"))) == env.substitute("{-a}{-b}{-c:3}", *factors)
 
     with pytest.raises(ValueError, match=re.escape("The factor parameter '-c' is not set.")):
         env.substitute("{-c}", *factors)

@@ -112,7 +112,11 @@ as `test-py3.12`, the `-py3.12` factor will be defined. The value of `3.12` coul
 the `{-py}` factor parameter placeholder in the command arguments or env values. The factor name
 prefix will be stripped from the factor argument to produce the substituted value. As a consequence,
 you want to ensure the factor names you use are non-overlapping or else an error will be raised due
-to ambiguity in which factor argument should be applied.
+to ambiguity in which factor argument should be applied. An optional leading `:` can proceed the
+factor argument value, and it will be stripped. So both `test-py:3.12` and `test-py3.12` pass `3.12`
+as the value for the `-py` factor parameter. The colon-prefix helps distinguish factor name from
+factor value, paralleling the default value syntax that can be used at factor parameter declaration
+sites.
 
 ### Tasks
 

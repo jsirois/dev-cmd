@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.13.0
+
+Support an optional leading `:` in factor argument values to parallel factor parameter default
+syntax and better visually separate factor values from factor names.
+
 ## 0.12.0
 
 This change adds support for command parametrization via environment variables, Python interpreter
