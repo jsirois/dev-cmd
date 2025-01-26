@@ -118,6 +118,37 @@ as the value for the `-py` factor parameter. The colon-prefix helps distinguish 
 factor value, paralleling the default value syntax that can be used at factor parameter declaration
 sites.
 
+#### Documentation
+
+You can document a command by providing a `description`. If the command has factors, you can
+document these using a `factors` sub-table whose keys are the factor names and whose values are
+strings that describe the factor.
+
+For example:
+```toml
+[tool.dev-cmd.commands.type-check.factors]
+py = "The Python version to type check in <major>.<minor> form; i.e.: 3.13."
+
+[tool.dev-cmd.commands.type-check]
+args = [
+   "mypy",
+   "--python-version", "{-py:{markers.python_version}}",
+   "--cache-dir", ".mypy_cache_{markers.python_version}",
+   "setup.py",
+   "dev_cmd",
+   "tests",
+]
+```
+
+You can view this documentation by passing `dev-cmd` either `-l` or `--list`. For example:
+```console
+uv run dev-cmd --list
+Commands:
+type-check
+    -py: The Python version to type check in <major>.<minor> form; i.e.: 3.13.
+         [default: {markers.python_version} (currently 3.12)]
+```
+
 ### Tasks
 
 Tasks are defined in their own table and compose two or more commands to implement some larger task.
@@ -182,6 +213,46 @@ You could also ad-hoc check against just Python 3.8 and 3.9 in parallel via the 
 your shell does not do parameter expansion of this sort:
 ```console
 uv run dev-cmd -p 'type-check-py3.{8,9}'
+```
+
+#### Documentation
+
+You can document a task by defining it in a table instead of as a list of steps. To do so, supply
+the list of steps with the `steps` key and the documentation with the `description` key:
+```toml
+[tool.dev-cmd.commands]
+fmt = ["ruff", "format"]
+lint = ["ruff", "check", "--fix"]
+type-check = ["mypy", "--python", "{-py:{markers.python_version}}"]
+
+[tool.dev-cmd.commands.test]
+args = ["pytest"]
+cwd = "tests"
+accepts-extra-args = true
+
+[tool.dev-cmd.tasks.checks]
+description = "Runs all development checks, including auto-formatting code."
+steps = [
+    "fmt",
+    "lint",
+    # Parallelizing the type checks and test is safe (they don't modify files), and it nets a ~3x
+    # speedup over running them all serially.
+    ["type-check-py3.{8..13}", "test"],
+]
+```
+
+You can view this documentation by passing `dev-cmd` either `-l` or `--list`. For example:
+```console
+uv run dev-cmd --list
+Commands:
+fmt
+lint
+type-check
+    -py: [default: {markers.python_version} (currently 3.12)]
+test
+
+Tasks:
+checks: Runs all development checks, including auto-formatting code.
 ```
 
 ### Global Options

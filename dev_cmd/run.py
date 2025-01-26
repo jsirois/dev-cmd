@@ -21,6 +21,7 @@ from dev_cmd.expansion import expand
 from dev_cmd.invoke import Invocation
 from dev_cmd.model import Configuration, ExitStyle
 from dev_cmd.parse import parse_dev_config
+from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import find_pyproject_toml
 
 DEFAULT_EXIT_STYLE = ExitStyle.AFTER_STEP
@@ -108,6 +109,7 @@ def _run(
 class Options:
     tasks: tuple[str, ...]
     skips: frozenset[str]
+    list: bool
     quiet: bool
     parallel: bool
     extra_args: tuple[str, ...]
@@ -122,6 +124,13 @@ def _parse_args() -> Options:
         ),
     )
     parser.add_argument("-V", "--version", action="version", version=__version__)
+    parser.add_argument(
+        "-l",
+        "--list",
+        default=False,
+        action="store_true",
+        help="List the commands and tasks that can be run.",
+    )
     parser.add_argument(
         "-q",
         "--quiet",
@@ -241,6 +250,7 @@ def _parse_args() -> Options:
     return Options(
         tasks=tasks,
         skips=frozenset(options.skips),
+        list=options.list,
         quiet=options.quiet,
         parallel=parallel,
         extra_args=tuple(extra_args) if extra_args is not None else (),
@@ -249,14 +259,74 @@ def _parse_args() -> Options:
     )
 
 
+def _list(
+    console,  # type: Console
+    config,  # type: Configuration
+):
+    # type: (...) -> Any
+
+    console.print(f"{color.cyan('Commands')}:")
+    seen: set[str] = set()
+    for command in config.commands:
+        command = command.base or command
+        if command.name in seen:
+            continue
+        seen.add(command.name)
+        rendered_command_name = color.color(command.name, fg="magenta", style="bold")
+        if command.description:
+            console.print(f"{rendered_command_name}: {color.color(command.description, fg='gray')}")
+        else:
+            console.print(rendered_command_name)
+        for factor_description in command.factor_descriptions:
+            factor_desc_header = f"    -{factor_description.factor}"
+            rendered_factor = color.magenta(factor_desc_header)
+            default = factor_description.default
+            if default:
+                substituted_default = DEFAULT_ENVIRONMENT.substitute(default).value
+                if substituted_default != default:
+                    extra_info = f"[default: {default} (currently {substituted_default})]"
+                else:
+                    extra_info = f"[default: {default}]"
+            else:
+                extra_info = "[required]"
+            if factor_description.description:
+                desc_lines = factor_description.description.splitlines()
+                console.print(f"{rendered_factor}: {color.color(desc_lines[0], fg='gray')}")
+                for extra_line in desc_lines[1:]:
+                    console.print(
+                        f"{' ' * len(factor_desc_header)}  {color.color(extra_line, fg='gray')}"
+                    )
+                console.print(
+                    f"{' ' * len(factor_desc_header)}  {color.color(extra_info, fg='gray')}"
+                )
+            else:
+                console.print(f"{rendered_factor}: {color.color(extra_info, fg='gray')}")
+    if config.tasks:
+        console.print()
+        console.print(f"{color.cyan('Tasks')}:")
+        for task in config.tasks:
+            rendered_task_name = color.color(task.name, fg="magenta", style="bold")
+            if task.description:
+                console.print(f"{rendered_task_name}: {color.color(task.description, fg='gray')}")
+            else:
+                console.print(rendered_task_name)
+
+
 def main() -> Any:
     start = time.time()
-    success = False
     options = _parse_args()
     console = Console(quiet=options.quiet)
     try:
         pyproject_toml = find_pyproject_toml()
         config = parse_dev_config(pyproject_toml, *options.tasks)
+    except DevCmdError as e:
+        return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
+
+    if options.list:
+        return _list(console, config)
+
+    success = False
+    try:
         _run(
             config,
             *options.tasks,
@@ -268,8 +338,6 @@ def main() -> Any:
             grace_period_override=options.grace_period,
         )
         success = True
-    except DevCmdError as e:
-        return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
     except OSError as e:
         if console.quiet:
             return 1

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import os
 from collections import defaultdict
@@ -11,8 +12,8 @@ from typing import Any, Container, Iterable, Iterator, Mapping, Set, cast
 
 from dev_cmd.errors import InvalidModelError
 from dev_cmd.expansion import expand
-from dev_cmd.model import Command, Configuration, ExitStyle, Factor, Group, Task
-from dev_cmd.placeholder import Environment
+from dev_cmd.model import Command, Configuration, ExitStyle, Factor, FactorDescription, Group, Task
+from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import PyProjectToml
 
 
@@ -47,10 +48,12 @@ def _parse_commands(
 
     for name, data in commands.items():
         extra_env: list[tuple[str, str]] = []
+        factor_descriptions: dict[Factor, str | None] = {}
         if isinstance(data, list):
             args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands] `{name}`"))
             cwd = project_dir
             accepts_extra_args = False
+            description = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
 
@@ -92,22 +95,45 @@ def _parse_commands(
                     f"`true` or `false`, given: {accepts_extra_args} of type "
                     f"{type(accepts_extra_args)}."
                 )
+
+            description = command.pop("description", None)
+            if description and not isinstance(description, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `description` value must be a string, "
+                    f"given: {description} of type {type(description)}."
+                )
+
+            raw_factor_descriptions = _assert_dict_str_keys(
+                command.pop("factors", {}), path=f"[tool.dev-cmd.commands.{name}] `factors`"
+            )
+            for factor_name, factor_desc in raw_factor_descriptions.items():
+                if not isinstance(factor_desc, str):
+                    raise InvalidModelError(
+                        f"The [tool.dev-cmd.commands.{name}.factors] `{factor_name}` value must be "
+                        f"a string, given: {factor_desc} of type {type(factor_desc)}."
+                    )
+                factor_descriptions[Factor(factor_name)] = factor_desc
+
             if data:
                 raise InvalidModelError(
                     f"Unexpected configuration keys in the [tool.dev-cmd.commands.{name}] table: "
                     f"{' '.join(data)}"
                 )
 
-        env = Environment()
         for factors in required_steps[name]:
             factors_suffix = f"-{'-'.join(factors)}" if factors else ""
 
+            seen_factors: dict[Factor, FactorDescription] = {}
             used_factors: set[Factor] = set()
 
             def substitute(text: str) -> str:
-                substituted, consumed_factors = env.substitute(text, *factors)
-                used_factors.update(consumed_factors)
-                return substituted
+                substitution = DEFAULT_ENVIRONMENT.substitute(text, *factors)
+                seen_factors.update(
+                    (seen_factor, FactorDescription(seen_factor, default=default))
+                    for seen_factor, default in substitution.seen_factors
+                )
+                used_factors.update(substitution.used_factors)
+                return substitution.value
 
             substituted_args = [substitute(arg) for arg in args]
             substituted_extra_env = [(key, substitute(value)) for key, value in extra_env]
@@ -127,12 +153,53 @@ def _parse_commands(
                         f"{head} and {tail}."
                     )
 
+            mismatched_factors_descriptions: list[str] = []
+            for factor, desc in factor_descriptions.items():
+                factor_desc = seen_factors.get(factor)
+                if not factor_desc:
+                    mismatched_factors_descriptions.append(factor)
+                else:
+                    seen_factors[factor] = dataclasses.replace(factor_desc, description=desc)
+            if mismatched_factors_descriptions:
+                count = len(mismatched_factors_descriptions)
+                factor_plural = "factors" if count > 1 else "factor"
+                raise InvalidModelError(
+                    os.linesep.join(
+                        (
+                            f"Descriptions were given for {count} {factor_plural} that do not "
+                            f"appear in [dev-cmd.commands.{name}] `args` or `env`:",
+                            *(
+                                f"{index}. {name}"
+                                for index, name in enumerate(
+                                    mismatched_factors_descriptions, start=1
+                                )
+                            ),
+                        )
+                    )
+                )
+
+            base: Command | None = None
+            if factors:
+                base = Command(
+                    name=name,
+                    args=tuple(args),
+                    extra_env=tuple(extra_env),
+                    cwd=cwd,
+                    accepts_extra_args=accepts_extra_args,
+                    base=None,
+                    description=description,
+                    factor_descriptions=tuple(seen_factors.values()),
+                )
+
             yield Command(
-                f"{name}{factors_suffix}",
-                tuple(substituted_args),
+                name=f"{name}{factors_suffix}",
+                args=tuple(substituted_args),
                 extra_env=tuple(substituted_extra_env),
                 cwd=cwd,
                 accepts_extra_args=accepts_extra_args,
+                base=base,
+                description=description,
+                factor_descriptions=tuple(seen_factors.values()),
             )
 
 
@@ -194,17 +261,40 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
         return
 
     tasks_by_name: dict[str, Task] = {}
-    for name, group in tasks.items():
+    for name, data in tasks.items():
         if name in commands:
             raise InvalidModelError(
                 f"The task {name!r} collides with command {name!r}. Tasks and commands share the "
                 f"same namespace and the names must be unique."
             )
-        if not isinstance(group, list):
+        if isinstance(data, dict):
+            group = data.pop("steps", [])
+            if not group or not isinstance(group, list):
+                raise InvalidModelError(
+                    f"Expected the [tool.dev-cmd.tasks.{name}] table to define a `steps` list "
+                    f"containing at least one step."
+                )
+            description = data.pop("description", None)
+            if description and not isinstance(description, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.tasks.{name}] `description` value must be a string, "
+                    f"given: {description} of type {type(description)}."
+                )
+            if data:
+                raise InvalidModelError(
+                    f"Unexpected configuration keys in the [tool.dev-cmd.tasks.{name}] table: "
+                    f"{' '.join(data)}"
+                )
+        elif isinstance(data, list):
+            group = data
+            description = None
+        else:
             raise InvalidModelError(
-                f"Expected value at [tool.dev-cmd.tasks] `{name}` to be a list containing "
-                f"strings or lists of strings, but given: {group} of type {type(group)}."
+                f"Expected value at [tool.dev-cmd.tasks] `{name}` to be a list containing strings "
+                f"or lists of strings or else a table defining a `steps` list, but given: {data} "
+                f"of type {type(data)}."
             )
+
         task = Task(
             name=name,
             steps=_parse_group(
@@ -214,6 +304,7 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                 tasks_defined_so_far=tasks_by_name,
                 commands=commands,
             ),
+            description=description,
         )
         tasks_by_name[name] = task
         yield task
@@ -294,6 +385,8 @@ def _iter_all_required_step_names(
     elif isinstance(value, list):
         for item in value:
             yield from _iter_all_required_step_names(item, tasks_data, seen)
+    elif isinstance(value, dict):
+        yield from _iter_all_required_step_names(value.get("steps", []), tasks_data, seen)
 
 
 def _gather_all_required_step_names(
@@ -329,8 +422,10 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
     default_step_name = dev_cmd_data.pop("default", None)
 
     required_steps: defaultdict[str, list[tuple[Factor, ...]]] = defaultdict(list)
-    required_step_names = _gather_all_required_step_names(requested_steps, tasks_data)
     known_names = tuple(itertools.chain(commands_data, tasks_data))
+    required_step_names = (
+        _gather_all_required_step_names(requested_steps, tasks_data) or known_names
+    )
     for required_step_name in required_step_names:
         if required_step_name in known_names:
             required_steps[required_step_name].append(())

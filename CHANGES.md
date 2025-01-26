@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.14.0
+
+Add support for documenting commands and tasks and listing them with their documentation via
+`-l` / `--list`.
+
 ## 0.13.0
 
 Support an optional leading `:` in factor argument values to parallel factor parameter default

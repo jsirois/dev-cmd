@@ -8,16 +8,16 @@ import pytest
 from packaging.markers import default_environment
 
 from dev_cmd.model import Factor
-from dev_cmd.placeholder import Environment
+from dev_cmd.placeholder import DEFAULT_ENVIRONMENT, Environment, Substitution
 
 
 @pytest.fixture
 def env() -> Environment:
-    return Environment()
+    return DEFAULT_ENVIRONMENT
 
 
 def substitute(env: Environment, text: str) -> str:
-    return env.substitute(text)[0]
+    return env.substitute(text).value
 
 
 def test_substitute_noop(env: Environment) -> None:
@@ -66,10 +66,22 @@ def test_substitute_markers(env) -> None:
 
 def test_substitute_factors(env: Environment) -> None:
     factors = Factor("a1"), Factor("b:2")
-    assert ("1", (Factor("a1"),)) == env.substitute("{-a}", *factors)
-    assert ("2", (Factor("b:2"),)) == env.substitute("{-b}", *factors)
-    assert ("12", (Factor("a1"), Factor("b:2"))) == env.substitute("{-a}{-b}", *factors)
-    assert ("123", (Factor("a1"), Factor("b:2"))) == env.substitute("{-a}{-b}{-c:3}", *factors)
+    assert Substitution.create(
+        "1", seen_factors=[(Factor("a"), None)], used_factors=[Factor("a1")]
+    ) == env.substitute("{-a}", *factors)
+    assert Substitution.create(
+        "2", seen_factors=[(Factor("b"), None)], used_factors=[Factor("b:2")]
+    ) == env.substitute("{-b}", *factors)
+    assert Substitution.create(
+        "12",
+        seen_factors=[(Factor("a"), None), (Factor("b"), None)],
+        used_factors=[Factor("a1"), Factor("b:2")],
+    ) == env.substitute("{-a}{-b}", *factors)
+    assert Substitution.create(
+        "123",
+        seen_factors=[(Factor("a"), None), (Factor("b"), None), (Factor("c"), "3")],
+        used_factors=[Factor("a1"), Factor("b:2")],
+    ) == env.substitute("{-a}{-b}{-c:3}", *factors)
 
     with pytest.raises(ValueError, match=re.escape("The factor parameter '-c' is not set.")):
         env.substitute("{-c}", *factors)
@@ -88,6 +100,8 @@ def test_substitute_intra_recursive() -> None:
 
     env = Environment(env={"USE_FACTOR": "py", "USE_MARKER": "python_version"})
     assert expected_python_version == substitute(env, "{markers.{env.USE_MARKER}}")
-    assert (expected_python_version, (Factor("py{markers.{env.USE_MARKER}}"),)) == env.substitute(
-        "{-{env.USE_FACTOR}}", Factor("py{markers.{env.USE_MARKER}}")
-    )
+    assert Substitution.create(
+        expected_python_version,
+        seen_factors=[(Factor("py"), None)],
+        used_factors=[Factor("py{markers.{env.USE_MARKER}}")],
+    ) == env.substitute("{-{env.USE_FACTOR}}", Factor("py{markers.{env.USE_MARKER}}"))

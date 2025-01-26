@@ -14,12 +14,22 @@ class Factor(str):
 
 
 @dataclass(frozen=True)
+class FactorDescription:
+    factor: Factor
+    default: str | None = None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
 class Command:
     name: str
     args: tuple[str, ...]
     extra_env: tuple[tuple[str, str], ...] = ()
     cwd: PurePath | None = None
     accepts_extra_args: bool = False
+    base: Command | None = None
+    description: str | None = None
+    factor_descriptions: tuple[FactorDescription, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -40,6 +50,7 @@ class Group:
 class Task:
     name: str
     steps: Group
+    description: str | None = None
 
     def accepts_extra_args(self, skips: Container[str]) -> Command | None:
         if self.name in skips:

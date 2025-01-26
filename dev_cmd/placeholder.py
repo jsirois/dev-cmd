@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Callable, Mapping, cast
+from typing import Callable, Iterable, Mapping, cast
 
 from packaging import markers
 
@@ -18,7 +18,28 @@ from dev_cmd.model import Factor
 class State:
     factors: tuple[Factor, ...] = ()
     text: list[str] = field(default_factory=list, init=False)
+    seen_factors: list[tuple[Factor, str | None]] = field(default_factory=list, init=False)
     used_factors: list[Factor] = field(default_factory=list, init=False)
+
+
+@dataclass(frozen=True)
+class Substitution:
+    @classmethod
+    def create(
+        cls,
+        value: str,
+        seen_factors: Iterable[tuple[Factor, str | None]] = (),
+        used_factors: Iterable[Factor] = (),
+    ) -> Substitution:
+        return cls(
+            value=value,
+            seen_factors=tuple(dict.fromkeys(seen_factors)),
+            used_factors=tuple(dict.fromkeys(used_factors)),
+        )
+
+    value: str
+    seen_factors: tuple[tuple[Factor, str | None], ...] = ()
+    used_factors: tuple[Factor, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -28,10 +49,12 @@ class Environment(Substituter[State, str]):
         default_factory=cast(Callable[[], Mapping[str, str]], markers.default_environment)
     )
 
-    def substitute(self, text: str, *factors: Factor) -> tuple[str, tuple[Factor, ...]]:
+    def substitute(self, text: str, *factors: Factor) -> Substitution:
         state = State(factors)
         result = brace_substitution.substitute(text, self, state=state)
-        return result, tuple(state.used_factors)
+        return Substitution.create(
+            value=result, seen_factors=state.seen_factors, used_factors=state.used_factors
+        )
 
     def raw_text(self, text: str, state: State) -> None:
         state.text.append(text)
@@ -48,7 +71,8 @@ class Environment(Substituter[State, str]):
         default = deflt if sep else None
         value: str | None
         if key.startswith("-"):
-            factor_name, _ = self.substitute(key[1:])
+            factor_name = self.substitute(key[1:]).value
+            state.seen_factors.append((Factor(factor_name), default))
             matching_factors = [
                 factor for factor in state.factors if factor.startswith(factor_name)
             ]
@@ -70,12 +94,12 @@ class Environment(Substituter[State, str]):
             if value is None:
                 raise ValueError(f"The factor {factor_name!r} is not set.")
         elif key.startswith("env."):
-            env_var_name, _ = self.substitute(key[4:])
+            env_var_name = self.substitute(key[4:]).value
             value = self.env.get(env_var_name, default)
             if value is None:
                 raise ValueError(f"The environment variable {env_var_name!r} is not set.")
         elif key.startswith("markers."):
-            marker_name, _ = self.substitute(key[8:])
+            marker_name = self.substitute(key[8:]).value
             try:
                 value = self.markers[marker_name] or default
             except KeyError:
@@ -86,7 +110,10 @@ class Environment(Substituter[State, str]):
                 )
         else:
             raise ValueError(f"Unrecognized substitution key {key!r}.")
-        state.text.append(self.substitute(value)[0])
+        state.text.append(self.substitute(value).value)
 
     def result(self, state: State) -> str:
         return "".join(state.text)
+
+
+DEFAULT_ENVIRONMENT = Environment()
