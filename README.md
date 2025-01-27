@@ -149,6 +149,9 @@ type-check
          [default: {markers.python_version} (currently 3.12)]
 ```
 
+If you'd like to hide a command from being listed, define it as a table and include a
+`hidden = true` entry.
+
 ### Tasks
 
 Tasks are defined in their own table and compose two or more commands to implement some larger task.
@@ -254,6 +257,9 @@ test
 Tasks:
 checks: Runs all development checks, including auto-formatting code.
 ```
+
+If you'd like to hide a task from being listed, define it as a table and include a `hidden = true`
+entry.
 
 ### Global Options
 

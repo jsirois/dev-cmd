@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.15.0
+
+Add support for hiding commands and tasks from `-l` / `--list` output.
+
 ## 0.14.0
 
 Add support for documenting commands and tasks and listing them with their documentation via

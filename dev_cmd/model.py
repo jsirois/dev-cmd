@@ -28,6 +28,7 @@ class Command:
     cwd: PurePath | None = None
     accepts_extra_args: bool = False
     base: Command | None = None
+    hidden: bool = False
     description: str | None = None
     factor_descriptions: tuple[FactorDescription, ...] = ()
 
@@ -50,6 +51,7 @@ class Group:
 class Task:
     name: str
     steps: Group
+    hidden: bool = False
     description: str | None = None
 
     def accepts_extra_args(self, skips: Container[str]) -> Command | None:

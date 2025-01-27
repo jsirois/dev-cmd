@@ -266,12 +266,18 @@ def _list(
     # type: (...) -> Any
 
     console.print(f"{color.cyan('Commands')}:")
+    hidden_command_count = len(tuple(command for command in config.commands if command.hidden))
+    if hidden_command_count > 0:
+        subject = "command is" if hidden_command_count == 1 else "commands are"
+        print(color.color(f"({hidden_command_count} {subject} hidden.)", fg="gray"))
     seen: set[str] = set()
     for command in config.commands:
         command = command.base or command
         if command.name in seen:
             continue
         seen.add(command.name)
+        if command.hidden:
+            continue
         rendered_command_name = color.color(command.name, fg="magenta", style="bold")
         if command.description:
             console.print(f"{rendered_command_name}: {color.color(command.description, fg='gray')}")
@@ -304,7 +310,13 @@ def _list(
     if config.tasks:
         console.print()
         console.print(f"{color.cyan('Tasks')}:")
+        hidden_task_count = len(tuple(task for task in config.tasks if task.hidden))
+        if hidden_task_count > 0:
+            subject = "task is" if hidden_task_count == 1 else "tasks are"
+            print(color.color(f"({hidden_task_count} {subject} hidden.)", fg="gray"))
         for task in config.tasks:
+            if task.hidden:
+                continue
             rendered_task_name = color.color(task.name, fg="magenta", style="bold")
             if task.description:
                 console.print(f"{rendered_task_name}: {color.color(task.description, fg='gray')}")

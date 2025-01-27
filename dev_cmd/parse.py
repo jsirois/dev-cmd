@@ -53,6 +53,7 @@ def _parse_commands(
             args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands] `{name}`"))
             cwd = project_dir
             accepts_extra_args = False
+            hidden = False
             description = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
@@ -94,6 +95,13 @@ def _parse_commands(
                     f"The [tool.dev-cmd.commands.{name}] `accepts-extra-args` value must be either "
                     f"`true` or `false`, given: {accepts_extra_args} of type "
                     f"{type(accepts_extra_args)}."
+                )
+
+            hidden = command.pop("hidden", False)
+            if not isinstance(hidden, bool):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `hidden` value must be a boolean, "
+                    f"given: {hidden} of type {type(hidden)}."
                 )
 
             description = command.pop("description", None)
@@ -187,6 +195,7 @@ def _parse_commands(
                     cwd=cwd,
                     accepts_extra_args=accepts_extra_args,
                     base=None,
+                    hidden=hidden,
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                 )
@@ -198,6 +207,7 @@ def _parse_commands(
                 cwd=cwd,
                 accepts_extra_args=accepts_extra_args,
                 base=base,
+                hidden=hidden,
                 description=description,
                 factor_descriptions=tuple(seen_factors.values()),
             )
@@ -274,12 +284,21 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                     f"Expected the [tool.dev-cmd.tasks.{name}] table to define a `steps` list "
                     f"containing at least one step."
                 )
+
+            hidden = data.pop("hidden", False)
+            if not isinstance(hidden, bool):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.tasks.{name}] `hidden` value must be a boolean, "
+                    f"given: {hidden} of type {type(hidden)}."
+                )
+
             description = data.pop("description", None)
             if description and not isinstance(description, str):
                 raise InvalidModelError(
                     f"The [tool.dev-cmd.tasks.{name}] `description` value must be a string, "
                     f"given: {description} of type {type(description)}."
                 )
+
             if data:
                 raise InvalidModelError(
                     f"Unexpected configuration keys in the [tool.dev-cmd.tasks.{name}] table: "
@@ -287,6 +306,7 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                 )
         elif isinstance(data, list):
             group = data
+            hidden = False
             description = None
         else:
             raise InvalidModelError(
@@ -304,6 +324,7 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                 tasks_defined_so_far=tasks_by_name,
                 commands=commands,
             ),
+            hidden=hidden,
             description=description,
         )
         tasks_by_name[name] = task
