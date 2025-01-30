@@ -144,7 +144,7 @@ You can view this documentation by passing `dev-cmd` either `-l` or `--list`. Fo
 ```console
 uv run dev-cmd --list
 Commands:
-type-check
+type-check:
     -py: The Python version to type check in <major>.<minor> form; i.e.: 3.13.
          [default: {markers.python_version} (currently 3.12)]
 ```
@@ -250,12 +250,13 @@ uv run dev-cmd --list
 Commands:
 fmt
 lint
-type-check
+type-check:
     -py: [default: {markers.python_version} (currently 3.12)]
-test
+test (-- extra pytest args ...)
 
 Tasks:
-checks: Runs all development checks, including auto-formatting code.
+checks (-- extra pytest args ...):
+    Runs all development checks, including auto-formatting code.
 ```
 
 If you'd like to hide a task from being listed, define it as a table and include a `hidden = true`
