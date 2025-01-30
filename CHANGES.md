@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.16.0
+
+Note when commands and tasks can accept extra args in `-l` / `--list` output.
+
 ## 0.15.0
 
 Add support for hiding commands and tasks from `-l` / `--list` output.

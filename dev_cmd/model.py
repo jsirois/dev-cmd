@@ -54,7 +54,7 @@ class Task:
     hidden: bool = False
     description: str | None = None
 
-    def accepts_extra_args(self, skips: Container[str]) -> Command | None:
+    def accepts_extra_args(self, skips: Container[str] = ()) -> Command | None:
         if self.name in skips:
             return None
         return self.steps.accepts_extra_args(skips)

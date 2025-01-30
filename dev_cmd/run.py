@@ -279,8 +279,14 @@ def _list(
         if command.hidden:
             continue
         rendered_command_name = color.color(command.name, fg="magenta", style="bold")
+        if command.accepts_extra_args:
+            extra_args_help = color.magenta(f" (-- extra {command.args[0]} args ...)")
+            rendered_command_name = f"{rendered_command_name}{extra_args_help}"
         if command.description:
-            console.print(f"{rendered_command_name}: {color.color(command.description, fg='gray')}")
+            console.print(f"{rendered_command_name}:")
+            console.print(f"    {color.color(command.description, fg='gray')}")
+        elif command.factor_descriptions:
+            console.print(f"{rendered_command_name}:")
         else:
             console.print(rendered_command_name)
         for factor_description in command.factor_descriptions:
@@ -318,8 +324,12 @@ def _list(
             if task.hidden:
                 continue
             rendered_task_name = color.color(task.name, fg="magenta", style="bold")
+            if extra_args_cmd := task.accepts_extra_args():
+                extra_args_help = color.magenta(f" (-- extra {extra_args_cmd.args[0]} args ...)")
+                rendered_task_name = f"{rendered_task_name}{extra_args_help}"
             if task.description:
-                console.print(f"{rendered_task_name}: {color.color(task.description, fg='gray')}")
+                console.print(f"{rendered_task_name}: ")
+                console.print(f"    {color.color(task.description, fg='gray')}")
             else:
                 console.print(rendered_task_name)
 
