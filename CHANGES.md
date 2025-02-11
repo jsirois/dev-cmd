@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.16.1
+
+Fix missing help output for come commands and fix `--color` help.
+
 ## 0.16.0
 
 Note when commands and tasks can accept extra args in `-l` / `--list` output.

@@ -44,6 +44,9 @@ class ColorChoice(Enum):
     AUTO = "auto"
     NEVER = "never"
 
+    def __str__(self) -> str:
+        return self.value
+
 
 def set_color(choice: ColorChoice) -> None:
     if choice is ColorChoice.NEVER:
