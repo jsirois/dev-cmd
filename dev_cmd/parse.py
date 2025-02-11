@@ -128,17 +128,7 @@ def _parse_commands(
                     f"{' '.join(data)}"
                 )
 
-        _command = Command(
-            name=name,
-            args=tuple(args),
-            extra_env=tuple(extra_env),
-            cwd=cwd,
-            accepts_extra_args=accepts_extra_args,
-            base=None,
-            hidden=hidden,
-            description=description,
-        )
-        for factors in required_steps[name]:
+        for factors in required_steps.get(name) or [()]:
             factors_suffix = f"-{'-'.join(factors)}" if factors else ""
 
             seen_factors: dict[Factor, FactorDescription] = {}
@@ -198,8 +188,16 @@ def _parse_commands(
 
             base: Command | None = None
             if factors:
-                base = dataclasses.replace(
-                    _command, factor_descriptions=tuple(seen_factors.values())
+                base = Command(
+                    name=name,
+                    args=tuple(args),
+                    extra_env=tuple(extra_env),
+                    cwd=cwd,
+                    accepts_extra_args=accepts_extra_args,
+                    base=None,
+                    hidden=hidden,
+                    description=description,
+                    factor_descriptions=tuple(seen_factors.values()),
                 )
 
             yield Command(
@@ -213,8 +211,6 @@ def _parse_commands(
                 description=description,
                 factor_descriptions=tuple(seen_factors.values()),
             )
-        else:
-            yield _command
 
 
 def _parse_group(
