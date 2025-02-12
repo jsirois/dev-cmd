@@ -279,6 +279,8 @@ def _list(
         if command.hidden:
             continue
         rendered_command_name = color.color(command.name, fg="magenta", style="bold")
+        if config.default == command:
+            rendered_command_name = f"* {rendered_command_name}"
         if command.accepts_extra_args:
             extra_args_help = color.magenta(f" (-- extra {command.args[0]} args ...)")
             rendered_command_name = f"{rendered_command_name}{extra_args_help}"
@@ -324,6 +326,8 @@ def _list(
             if task.hidden:
                 continue
             rendered_task_name = color.color(task.name, fg="magenta", style="bold")
+            if config.default == task:
+                rendered_task_name = f"* {rendered_task_name}"
             if extra_args_cmd := task.accepts_extra_args():
                 extra_args_help = color.magenta(f" (-- extra {extra_args_cmd.args[0]} args ...)")
                 rendered_task_name = f"{rendered_task_name}{extra_args_help}"

@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.17.0
+
+Denote the default command or task in `-l` / `--list` output with a leading asterisk.
+
 ## 0.16.1
 
 Fix missing help output for come commands and fix `--color` help.
