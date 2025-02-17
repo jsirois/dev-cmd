@@ -226,7 +226,7 @@ def _parse_args() -> Options:
     args: list[str] = []
     extra_args: list[str] | None = None
     for arg in sys.argv[1:]:
-        if "--" == arg:
+        if "--" == arg and extra_args is None:
             extra_args = []
         elif extra_args is not None:
             extra_args.append(arg)

@@ -111,9 +111,20 @@ def test_exec_script(script: PurePath, pyproject_toml: Path) -> None:
         )
 
     assert (
-        colors.magenta("Ford Marvin")
+        colors.magenta("Ford Marvin -- Zaphod")
         == subprocess.run(
-            args=["uv", "run", "dev-cmd", "test", "--", "magenta:", "Ford", "Marvin"],
+            args=[
+                "uv",
+                "run",
+                "dev-cmd",
+                "test",
+                "--",
+                "magenta:",
+                "Ford",
+                "Marvin",
+                "--",
+                "Zaphod",
+            ],
             stdout=subprocess.PIPE,
             text=True,
             check=True,
