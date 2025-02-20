@@ -88,6 +88,34 @@ uv run dev-cmd test fmt lint -- -vvs
 ```
 The order commands are run in does not affect where extra args are passed.
 
+#### Platform Selection
+
+You can condition command availability based on the current platform characteristics as determined
+by a `when` [environment marker][environment marker]. For example, to define a Windows-only command:
+```toml
+[tool.dev-cmd.commands.query-registry]
+when = "sys_platform == 'win32'"
+args = ["scripts/query-windows-registry.py"]
+```
+
+You can also use `when` conditions to select from amongst a mutually exclusive set of commands, each
+tailored to a specific platform. For this you can specify a common `name` for the commands forming
+the mutually exclusive group. For example, to define a "query" command that has a different
+implementation for Windows than for other systems:
+```toml
+[tool.dev-cmd.commands.query-posix]
+when = "sys_platform != 'win32'"
+name = "query"
+args = ["scripts/query-posix.py"]
+
+[tool.dev-cmd.commands.query-windows]
+when = "sys_platform == 'win32'"
+name = "query"
+args = ["scripts/query-windows-registry.py"]
+```
+
+[environment marker]: https://packaging.python.org/en/latest/specifications/dependency-specifiers/#environment-markers
+
 #### Parameterization
 
 Both command arguments and env values can be parameterized with values from the execution
@@ -196,6 +224,11 @@ When `uv run dev-cmd checks` is run, The elements in the 1st nested list are aga
 This time the 1st element is a list: `["fmt", "lint]`. Each layer of list nesting alternates between
 running serially and running in parallel; so `fmt` and `list` will be run serially in that order
 while they race `test` as a group in parallel.
+
+#### Platform Selection
+
+You can define platform-specific tasks using `when` and `name` entries in a task's table similar to
+the facility described for platform-specific commands above.
 
 #### Expansion
 

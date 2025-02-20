@@ -10,6 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Container, Iterable, Iterator, Mapping, Set, cast
 
+from packaging.markers import InvalidMarker, Marker
+
 from dev_cmd.errors import InvalidModelError
 from dev_cmd.expansion import expand
 from dev_cmd.model import Command, Configuration, ExitStyle, Factor, FactorDescription, Group, Task
@@ -46,17 +48,28 @@ def _parse_commands(
             "`dev-cmd`."
         )
 
+    seen_commands: dict[str, str] = {}
     for name, data in commands.items():
+        cwd: Path | None = None
         extra_env: list[tuple[str, str]] = []
         factor_descriptions: dict[Factor, str | None] = {}
+        original_name = name
         if isinstance(data, list):
             args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands] `{name}`"))
-            cwd = project_dir
             accepts_extra_args = False
             hidden = False
             description = None
+            when = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
+
+            raw_name = data.pop("name", name)
+            if not isinstance(raw_name, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `name` value must be a string , given: "
+                    f"{raw_name} of type {type(raw_name)}."
+                )
+            name = raw_name
 
             for key, val in _assert_dict_str_keys(
                 command.pop("env", {}), path=f"[tool.dev-cmd.commands.{name}] `env`"
@@ -79,15 +92,22 @@ def _parse_commands(
                     f"The [tool.dev-cmd.commands.{name}] table must define an `args` list."
                 )
 
-            cwd = Path(command.pop("cwd", project_dir))
-            if not cwd.is_absolute():
-                cwd = project_dir / cwd
-            cwd = cwd.resolve()
-            if not project_dir == Path(os.path.commonpath((project_dir, cwd))):
-                raise InvalidModelError(
-                    f"The resolved path of [tool.dev-cmd.commands.{name}] `cwd` lies outside the "
-                    f"project: {cwd}"
-                )
+            raw_cwd = command.pop("cwd", None)
+            if raw_cwd:
+                if not isinstance(raw_cwd, str):
+                    raise InvalidModelError(
+                        f"The [tool.dev-cmd.commands.{name}] `cwd` value must be a string, "
+                        f"given: {raw_cwd} of type {type(raw_cwd)}."
+                    )
+                cwd = Path(raw_cwd)
+                if not cwd.is_absolute():
+                    cwd = project_dir / cwd
+                cwd = cwd.resolve()
+                if not project_dir == Path(os.path.commonpath((project_dir, cwd))):
+                    raise InvalidModelError(
+                        f"The resolved path of [tool.dev-cmd.commands.{name}] `cwd` lies outside "
+                        f"the project: {cwd}"
+                    )
 
             accepts_extra_args = command.pop("accepts-extra-args", False)
             if not isinstance(accepts_extra_args, bool):
@@ -121,6 +141,22 @@ def _parse_commands(
                         f"a string, given: {factor_desc} of type {type(factor_desc)}."
                     )
                 factor_descriptions[Factor(factor_name)] = factor_desc
+
+            raw_when = command.pop("when", None)
+            if raw_when and not isinstance(raw_when, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `when` value must be a string, "
+                    f"given: {raw_when} of type {type(raw_when)}."
+                )
+            try:
+                when = Marker(raw_when) if raw_when else None
+            except InvalidMarker as e:
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `when` value is not a valid marker "
+                    f"expression: {e}{os.linesep}"
+                    f"See: https://packaging.python.org/en/latest/specifications/"
+                    f"dependency-specifiers/#environment-markers"
+                )
 
             if data:
                 raise InvalidModelError(
@@ -198,19 +234,33 @@ def _parse_commands(
                     hidden=hidden,
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
+                    when=when,
                 )
 
-            yield Command(
-                name=f"{name}{factors_suffix}",
-                args=tuple(substituted_args),
-                extra_env=tuple(substituted_extra_env),
-                cwd=cwd,
-                accepts_extra_args=accepts_extra_args,
-                base=base,
-                hidden=hidden,
-                description=description,
-                factor_descriptions=tuple(seen_factors.values()),
-            )
+            if not when or when.evaluate():
+                final_name = f"{name}{factors_suffix}"
+                previous_original_name = seen_commands.get(final_name)
+                if previous_original_name and previous_original_name != original_name:
+                    raise InvalidModelError(
+                        f"The command {original_name!r} collides with command "
+                        f"{previous_original_name!r}.{os.linesep}"
+                        f"You can define a command multiple times, but you must ensure the "
+                        f"commands all define mutually exclusive `when` marker expressions."
+                    )
+
+                seen_commands[final_name] = original_name
+                yield Command(
+                    name=final_name,
+                    args=tuple(substituted_args),
+                    extra_env=tuple(substituted_extra_env),
+                    cwd=cwd,
+                    accepts_extra_args=accepts_extra_args,
+                    base=base,
+                    hidden=hidden,
+                    description=description,
+                    factor_descriptions=tuple(seen_factors.values()),
+                    when=when,
+                )
 
 
 def _parse_group(
@@ -271,13 +321,18 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
         return
 
     tasks_by_name: dict[str, Task] = {}
+    seen_tasks: dict[str, str] = {}
     for name, data in tasks.items():
-        if name in commands:
-            raise InvalidModelError(
-                f"The task {name!r} collides with command {name!r}. Tasks and commands share the "
-                f"same namespace and the names must be unique."
-            )
+        original_name = name
         if isinstance(data, dict):
+            raw_name = data.pop("name", name)
+            if not isinstance(raw_name, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.tasks.{name}] `name` value must be a string , given: "
+                    f"{raw_name} of type {type(raw_name)}."
+                )
+            name = raw_name
+
             group = data.pop("steps", [])
             if not group or not isinstance(group, list):
                 raise InvalidModelError(
@@ -299,6 +354,22 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                     f"given: {description} of type {type(description)}."
                 )
 
+            raw_when = data.pop("when", None)
+            if raw_when and not isinstance(raw_when, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.tasks.{name}] `when` value must be a string, "
+                    f"given: {raw_when} of type {type(raw_when)}."
+                )
+            try:
+                when = Marker(raw_when) if raw_when else None
+            except InvalidMarker as e:
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.tasks.{name}] `when` value is not a valid marker "
+                    f"expression: {e}{os.linesep}"
+                    f"See: https://packaging.python.org/en/latest/specifications/"
+                    f"dependency-specifiers/#environment-markers"
+                )
+
             if data:
                 raise InvalidModelError(
                     f"Unexpected configuration keys in the [tool.dev-cmd.tasks.{name}] table: "
@@ -308,6 +379,7 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
             group = data
             hidden = False
             description = None
+            when = None
         else:
             raise InvalidModelError(
                 f"Expected value at [tool.dev-cmd.tasks] `{name}` to be a list containing strings "
@@ -315,20 +387,36 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                 f"of type {type(data)}."
             )
 
-        task = Task(
-            name=name,
-            steps=_parse_group(
-                task=name,
-                group=group,
-                all_task_names=frozenset(tasks),
-                tasks_defined_so_far=tasks_by_name,
-                commands=commands,
-            ),
-            hidden=hidden,
-            description=description,
-        )
-        tasks_by_name[name] = task
-        yield task
+        if not when or when.evaluate():
+            if name in commands:
+                raise InvalidModelError(
+                    f"The task {name!r} collides with command {name!r}. Tasks and commands share "
+                    f"the same namespace and the names must be unique."
+                )
+            previous_original_name = seen_tasks.get(name)
+            if previous_original_name and previous_original_name != original_name:
+                raise InvalidModelError(
+                    f"The task {original_name!r} collides with task "
+                    f"{previous_original_name!r}.{os.linesep}"
+                    f"You can define a task multiple times, but you must ensure the "
+                    f"tasks all define mutually exclusive `when` marker expressions."
+                )
+            task = Task(
+                name=name,
+                steps=_parse_group(
+                    task=name,
+                    group=group,
+                    all_task_names=frozenset(tasks),
+                    tasks_defined_so_far=tasks_by_name,
+                    commands=commands,
+                ),
+                hidden=hidden,
+                description=description,
+                when=when,
+            )
+            tasks_by_name[name] = task
+            seen_tasks[name] = original_name
+            yield task
 
 
 def _parse_default(

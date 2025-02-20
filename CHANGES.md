@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.18.0
+
+Add support for `when` marker expressions to commands and tasks to allow defining
+platform-specific commands and tasks. Also add support for an explicit `name` for commands and
+tasks to allow defining one version of a command or task for one platform and others for other
+platforms.
+
 ## 0.17.1
 
 Fix extra args support to pass all args after the 1st occurrence of `--` in the arg list.

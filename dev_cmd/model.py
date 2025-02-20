@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import PurePath
 from typing import Any, Container
 
+from packaging.markers import Marker
+
 
 class Factor(str):
     pass
@@ -31,6 +33,7 @@ class Command:
     hidden: bool = False
     description: str | None = None
     factor_descriptions: tuple[FactorDescription, ...] = ()
+    when: Marker | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ class Task:
     steps: Group
     hidden: bool = False
     description: str | None = None
+    when: Marker | None = None
 
     def accepts_extra_args(self, skips: Container[str] = ()) -> Command | None:
         if self.name in skips:
