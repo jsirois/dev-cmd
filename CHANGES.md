@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.18.1
+
+Fix late detection of configuration errors in the run phase from bubbling up uncaught.
+
 ## 0.18.0
 
 Add support for `when` marker expressions to commands and tasks to allow defining

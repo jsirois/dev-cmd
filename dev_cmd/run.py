@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
+import shlex
 import sys
 import time
 from argparse import ArgumentParser
@@ -94,7 +95,7 @@ def _run(
     if extra_args and not invocation.accepts_extra_args:
         raise InvalidArgumentError(
             f"The following extra args were passed but none of the selected commands accept extra "
-            f"arguments: {extra_args}"
+            f"arguments: {shlex.join(extra_args)}"
         )
 
     exit_style = exit_style_override or config.exit_style or DEFAULT_EXIT_STYLE
@@ -364,6 +365,10 @@ def main() -> Any:
             grace_period_override=options.grace_period,
         )
         success = True
+    except DevCmdError as e:
+        if console.quiet:
+            return 1
+        return f"{color.red('Configuration error')}: {color.yellow(str(e))}"
     except OSError as e:
         if console.quiet:
             return 1
