@@ -307,12 +307,14 @@ class Invocation:
                 errors.append(result)
                 continue
 
-            cmd, returncode, stdout = result
+            cmd, returncode, output = result
             cmd_name = color.color(
                 cmd.name, fg="magenta" if returncode == 0 else "red", style="bold"
             )
             await self.console.aprint(f"{prefix} {cmd_name}:", use_stderr=True)
-            await self.console.aprint(stdout.decode(), end="", use_stderr=True, force=True)
+            await self.console.aprint(
+                output.decode(errors="replace"), end="", use_stderr=True, force=True
+            )
             if returncode != 0:
                 error = ExecutionError.from_failed_cmd(cmd, returncode)
                 if exit_style is ExitStyle.IMMEDIATE:

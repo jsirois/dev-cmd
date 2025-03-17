@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.18.2
+
+Fix rendering of command output to be resilient to bytes that can't be decoded into the console
+character encoding.
+
 ## 0.18.1
 
 Fix late detection of configuration errors in the run phase from bubbling up uncaught.
