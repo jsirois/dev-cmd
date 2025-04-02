@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.20.3
+
+Fix command timing regression that reported ~0s for serially executed commands.
+
 ## 0.20.2
 
 Fix redundant step prefixes for bare commands.

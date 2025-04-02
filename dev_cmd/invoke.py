@@ -206,21 +206,25 @@ class Invocation:
             use_stderr=True,
         )
         start = time.time()
-        process_or_error = await self._invoke_command(command, *extra_args)
-        if self.timings:
-            timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
-            await self.console.aprint(
-                f"{prefix} {color.magenta(f'{color.bold(command.name)} {timing}')}"
-            )
-        if isinstance(process_or_error, ExecutionError):
-            return process_or_error
+        command_name_color = "red"
+        try:
+            process_or_error = await self._invoke_command(command, *extra_args)
+            if isinstance(process_or_error, ExecutionError):
+                return process_or_error
 
-        returncode = await process_or_error.wait()
-        self._in_flight_processes.pop(process_or_error, None)
-        if returncode == 0:
-            return None
+            returncode = await process_or_error.wait()
+            self._in_flight_processes.pop(process_or_error, None)
+            if returncode == 0:
+                command_name_color = "magenta"
+                return None
 
-        return ExecutionError.from_failed_cmd(command, returncode)
+            return ExecutionError.from_failed_cmd(command, returncode)
+        finally:
+            if self.timings:
+                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+                await self.console.aprint(
+                    f"{prefix} {color.color(f'{color.bold(command.name)} {timing}', fg=command_name_color)}"
+                )
 
     async def _invoke_group(
         self,
