@@ -23,7 +23,9 @@ from dev_cmd.errors import ExecutionError, InvalidModelError
 from dev_cmd.model import Command, ExitStyle, Group, Task
 
 
-def _step_prefix(step_name: str | None) -> str:
+def _step_prefix(step_name: str | None, serial: bool) -> str:
+    if serial and not step_name:
+        return f"{color.cyan('dev-cmd')}]"
     return color.cyan(f"dev-cmd {color.bold(step_name or '*')}]")
 
 
@@ -198,7 +200,7 @@ class Invocation:
     async def _invoke_command_sync(
         self, command: Command, *extra_args, prefix: str | None = None
     ) -> ExecutionError | None:
-        prefix = prefix or _step_prefix(command.name)
+        prefix = prefix or _step_prefix(step_name=None, serial=True)
         await self.console.aprint(
             f"{prefix} {color.magenta(f'Executing {color.bold(command.name)}...')}",
             use_stderr=True,
@@ -228,7 +230,7 @@ class Invocation:
         serial: bool,
         exit_style: ExitStyle = ExitStyle.AFTER_STEP,
     ) -> ExecutionError | None:
-        prefix = _step_prefix(task_name)
+        prefix = _step_prefix(task_name, serial)
         start = time.time()
         if serial:
             serial_errors: list[ExecutionError] = []

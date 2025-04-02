@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.20.2
+
+Fix redundant step prefixes for bare commands.
+
 ## 0.20.1
 
 Fix up parallel step indication and timing rollups.
