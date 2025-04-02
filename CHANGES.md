@@ -1,9 +1,13 @@
 # Release Notes
 
+## 0.20.1
+
+Fix up parallel step indication and timing rollups.
+
 ## 0.20.0
 
 Add support for task timing rollups and fix a bug in `accepts-extra-args` handling when there are
-multiple `accepts-extra-args` commands in a run but they all resolve to the same command.
+multiple `accepts-extra-args` commands in a run, but they all resolve to the same command.
 
 ## 0.19.0
 

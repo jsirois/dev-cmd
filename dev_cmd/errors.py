@@ -53,15 +53,16 @@ class ExecutionError(Exception):
     @classmethod
     def from_errors(
         cls,
-        step_name: str,
+        step_name: str | None,
         total_count: int,
         errors: Collection[ExecutionError],
         parallel: bool = False,
     ) -> ExecutionError:
+        name = step_name or "*"
         maybe_parallel = "parallel " if parallel else ""
-        lines = [f"{len(errors)} of {total_count} {maybe_parallel}commands in {step_name} failed:"]
+        lines = [f"{len(errors)} of {total_count} {maybe_parallel}commands in {name} failed:"]
         lines.extend(f"{error.step_name}: {error.message}" for error in errors)
-        return cls(step_name=step_name, message=os.linesep.join(lines))
+        return cls(step_name=name, message=os.linesep.join(lines))
 
     step_name: str
     message: str

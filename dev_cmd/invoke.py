@@ -23,8 +23,8 @@ from dev_cmd.errors import ExecutionError, InvalidModelError
 from dev_cmd.model import Command, ExitStyle, Group, Task
 
 
-def _step_prefix(step_name: str) -> str:
-    return color.cyan(f"dev-cmd {color.bold(step_name)}]")
+def _step_prefix(step_name: str | None) -> str:
+    return color.cyan(f"dev-cmd {color.bold(step_name or '*')}]")
 
 
 @asynccontextmanager
@@ -131,7 +131,7 @@ class Invocation:
     ) -> None:
         async with _guarded_stdin(), self._guarded_ctrl_c():
             if error := await self._invoke_group(
-                "*", Group(members=self.steps), *extra_args, serial=False, exit_style=exit_style
+                None, Group(members=self.steps), *extra_args, serial=False, exit_style=exit_style
             ):
                 await self._terminate_in_flight_processes()
                 raise error
@@ -205,24 +205,24 @@ class Invocation:
         )
         start = time.time()
         process_or_error = await self._invoke_command(command, *extra_args)
+        if self.timings:
+            timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+            await self.console.aprint(
+                f"{prefix} {color.magenta(f'{color.bold(command.name)} {timing}')}"
+            )
         if isinstance(process_or_error, ExecutionError):
             return process_or_error
 
         returncode = await process_or_error.wait()
         self._in_flight_processes.pop(process_or_error, None)
         if returncode == 0:
-            if self.timings:
-                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
-                await self.console.aprint(
-                    f"{prefix} {color.magenta(f'{color.bold(command.name)} {timing}')}"
-                )
             return None
 
         return ExecutionError.from_failed_cmd(command, returncode)
 
     async def _invoke_group(
         self,
-        task_name: str,
+        task_name: str | None,
         group: Group,
         *extra_args: str,
         serial: bool,
@@ -241,16 +241,29 @@ class Invocation:
                     if member.name in self.skips:
                         continue
                     error = await self._invoke_group(
-                        task_name, member.steps, *extra_args, serial=True, exit_style=exit_style
+                        member.name, member.steps, *extra_args, serial=True, exit_style=exit_style
                     )
                 else:
+                    group_serial = not serial
+                    group_name: str | None = None
+                    if task_name:
+                        group_name = task_name if group_serial else f"*{task_name}"
+
                     error = await self._invoke_group(
-                        task_name, member, *extra_args, serial=not serial, exit_style=exit_style
+                        group_name,
+                        member,
+                        *extra_args,
+                        serial=group_serial,
+                        exit_style=exit_style,
                     )
                 if error:
                     if exit_style is ExitStyle.IMMEDIATE:
                         return error
                     serial_errors.append(error)
+
+            if self.timings:
+                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+                await self.console.aprint(f"{prefix} {timing}")
 
             if len(serial_errors) == 1:
                 return serial_errors[0]
@@ -260,15 +273,12 @@ class Invocation:
                     step_name=task_name, total_count=len(group.members), errors=serial_errors
                 )
 
-            if self.timings:
-                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
-                await self.console.aprint(f"{prefix} {timing}")
             return None
 
         async def invoke_command_captured(
             command: Command,
         ) -> tuple[Command, int, bytes, float] | ExecutionError:
-            start = time.time()
+            command_start = time.time()
             proc_or_error = await self._invoke_command(
                 command,
                 *extra_args,
@@ -278,10 +288,10 @@ class Invocation:
             if isinstance(proc_or_error, ExecutionError):
                 return proc_or_error
 
-            output, _ = await proc_or_error.communicate()
-            elapsed = time.time() - start
+            command_output, _ = await proc_or_error.communicate()
+            command_elapsed = time.time() - command_start
             self._in_flight_processes.pop(proc_or_error, None)
-            return command, await proc_or_error.wait(), output, elapsed
+            return command, await proc_or_error.wait(), command_output, command_elapsed
 
         async def iter_tasks(
             item: Command | Task | Group,
@@ -293,13 +303,22 @@ class Invocation:
                 if item.name not in self.skips:
                     yield asyncio.create_task(
                         self._invoke_group(
-                            task_name, item.steps, *extra_args, serial=True, exit_style=exit_style
+                            item.name, item.steps, *extra_args, serial=True, exit_style=exit_style
                         )
                     )
             else:
+                async_group_serial = not serial
+                async_group_name: str | None = None
+                if task_name:
+                    async_group_name = task_name if async_group_serial else f"*{task_name}"
+
                 yield asyncio.create_task(
                     self._invoke_group(
-                        task_name, item, *extra_args, serial=not serial, exit_style=exit_style
+                        async_group_name,
+                        item,
+                        *extra_args,
+                        serial=async_group_serial,
+                        exit_style=exit_style,
                     )
                 )
 
@@ -344,6 +363,10 @@ class Invocation:
                 if exit_style is ExitStyle.IMMEDIATE:
                     return error
                 errors.append(error)
+
+        if self.timings:
+            timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+            await self.console.aprint(f"{prefix} {timing}")
 
         if len(errors) == 1:
             return errors[0]
