@@ -2,6 +2,10 @@
 
 ## 0.19.0
 
+Fix times reported via `-t` / `--timings` to have a consistent format with the overall run time.
+
+## 0.19.0
+
 Add support for emitting detailed timings with `-t` / `--timings`.
 
 ## 0.18.2

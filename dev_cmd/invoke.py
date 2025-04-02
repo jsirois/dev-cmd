@@ -212,7 +212,7 @@ class Invocation:
         self._in_flight_processes.pop(process_or_error, None)
         if returncode == 0:
             if self.timings:
-                timing = colors.color(f"took {time.time() - start:.2}s", fg="gray")
+                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
                 await self.console.aprint(
                     f"{prefix} {color.magenta(f'{color.bold(command.name)} {timing}')}"
                 )
@@ -327,7 +327,7 @@ class Invocation:
             )
             if self.timings:
                 await self.console.aprint(
-                    f"{prefix} {cmd_name} {colors.color(f'took {elapsed:.2}s', fg='gray')}:",
+                    f"{prefix} {cmd_name} {colors.color(f'took {elapsed:.3f}s', fg='gray')}:",
                     use_stderr=True,
                 )
             else:
