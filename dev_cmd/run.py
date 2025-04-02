@@ -35,6 +35,7 @@ def _run(
     skips: Collection[str] = (),
     console: Console = Console(),
     parallel: bool = False,
+    timings: bool = False,
     extra_args: Iterable[str] = (),
     exit_style_override: ExitStyle | None = None,
     grace_period_override: float | None = None,
@@ -64,6 +65,7 @@ def _run(
                 skips=skips,
                 console=console,
                 grace_period=grace_period,
+                timings=timings,
             )
         except KeyError as e:
             raise InvalidArgumentError(
@@ -78,7 +80,7 @@ def _run(
             )
     elif config.default:
         invocation = Invocation.create(
-            config.default, skips=skips, console=console, grace_period=grace_period
+            config.default, skips=skips, console=console, grace_period=grace_period, timings=timings
         )
     else:
         raise InvalidArgumentError(
@@ -113,6 +115,7 @@ class Options:
     list: bool
     quiet: bool
     parallel: bool
+    timings: bool
     extra_args: tuple[str, ...]
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
@@ -160,6 +163,12 @@ def _parse_args() -> Options:
             "Run all the top level command and task names passed in parallel. Has no effect unless "
             "there are two or more top level commands or tasks requested."
         ),
+    )
+    parser.add_argument(
+        "-t",
+        "--timings",
+        action="store_true",
+        help="Emit timing information for each command run.",
     )
 
     exit_style_group = parser.add_mutually_exclusive_group()
@@ -254,6 +263,7 @@ def _parse_args() -> Options:
         list=options.list,
         quiet=options.quiet,
         parallel=parallel,
+        timings=options.timings,
         extra_args=tuple(extra_args) if extra_args is not None else (),
         exit_style=options.exit_style,
         grace_period=options.grace_period,
@@ -360,6 +370,7 @@ def main() -> Any:
             skips=options.skips,
             console=console,
             parallel=options.parallel,
+            timings=options.timings,
             extra_args=options.extra_args,
             exit_style_override=options.exit_style,
             grace_period_override=options.grace_period,

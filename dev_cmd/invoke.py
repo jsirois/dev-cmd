@@ -6,12 +6,15 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from asyncio import CancelledError
 from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Container
+
+import colors
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
@@ -43,6 +46,7 @@ class Invocation:
         *steps: Command | Task,
         skips: Container[str],
         grace_period: float,
+        timings: bool = False,
         console: Console = Console(),
     ) -> Invocation:
         accepts_extra_args: Command | None = None
@@ -73,6 +77,7 @@ class Invocation:
             skips=skips,
             accepts_extra_args=accepts_extra_args is not None,
             grace_period=grace_period,
+            timings=timings,
             console=console,
         )
 
@@ -80,6 +85,7 @@ class Invocation:
     skips: Container[str]
     accepts_extra_args: bool
     grace_period: float
+    timings: bool
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
 
@@ -197,6 +203,7 @@ class Invocation:
             f"{prefix} {color.magenta(f'Executing {color.bold(command.name)}...')}",
             use_stderr=True,
         )
+        start = time.time()
         process_or_error = await self._invoke_command(command, *extra_args)
         if isinstance(process_or_error, ExecutionError):
             return process_or_error
@@ -204,6 +211,11 @@ class Invocation:
         returncode = await process_or_error.wait()
         self._in_flight_processes.pop(process_or_error, None)
         if returncode == 0:
+            if self.timings:
+                timing = colors.color(f"took {time.time() - start:.2}s", fg="gray")
+                await self.console.aprint(
+                    f"{prefix} {color.magenta(f'{color.bold(command.name)} {timing}')}"
+                )
             return None
 
         return ExecutionError.from_failed_cmd(command, returncode)
@@ -251,7 +263,8 @@ class Invocation:
 
         async def invoke_command_captured(
             command: Command,
-        ) -> tuple[Command, int, bytes] | ExecutionError:
+        ) -> tuple[Command, int, bytes, float] | ExecutionError:
+            start = time.time()
             proc_or_error = await self._invoke_command(
                 command,
                 *extra_args,
@@ -262,12 +275,13 @@ class Invocation:
                 return proc_or_error
 
             output, _ = await proc_or_error.communicate()
+            elapsed = time.time() - start
             self._in_flight_processes.pop(proc_or_error, None)
-            return command, await proc_or_error.wait(), output
+            return command, await proc_or_error.wait(), output, elapsed
 
         async def iter_tasks(
             item: Command | Task | Group,
-        ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes] | ExecutionError | None]]:
+        ) -> AsyncIterator[AsyncTask[tuple[Command, int, bytes, float] | ExecutionError | None]]:
             if isinstance(item, Command):
                 if item.name not in self.skips:
                     yield asyncio.create_task(invoke_command_captured(item))
@@ -307,11 +321,17 @@ class Invocation:
                 errors.append(result)
                 continue
 
-            cmd, returncode, output = result
+            cmd, returncode, output, elapsed = result
             cmd_name = color.color(
                 cmd.name, fg="magenta" if returncode == 0 else "red", style="bold"
             )
-            await self.console.aprint(f"{prefix} {cmd_name}:", use_stderr=True)
+            if self.timings:
+                await self.console.aprint(
+                    f"{prefix} {cmd_name} {colors.color(f'took {elapsed:.2}s', fg='gray')}:",
+                    use_stderr=True,
+                )
+            else:
+                await self.console.aprint(f"{prefix} {cmd_name}:", use_stderr=True)
             await self.console.aprint(
                 output.decode(errors="replace"), end="", use_stderr=True, force=True
             )

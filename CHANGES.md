@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.19.0
+
+Add support for emitting detailed timings with `-t` / `--timings`.
+
 ## 0.18.2
 
 Fix rendering of command output to be resilient to bytes that can't be decoded into the console
