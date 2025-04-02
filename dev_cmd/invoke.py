@@ -64,7 +64,7 @@ class Invocation:
                     )
                 accepts_extra_args = step
             elif command := step.accepts_extra_args(skips):
-                if accepts_extra_args and accepts_extra_args != step:
+                if accepts_extra_args and accepts_extra_args != command:
                     raise InvalidModelError(
                         f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
                         f"args, but only one command can accept extra args per invocation and command "
@@ -229,6 +229,7 @@ class Invocation:
         exit_style: ExitStyle = ExitStyle.AFTER_STEP,
     ) -> ExecutionError | None:
         prefix = _step_prefix(task_name)
+        start = time.time()
         if serial:
             serial_errors: list[ExecutionError] = []
             for member in group.members:
@@ -259,6 +260,9 @@ class Invocation:
                     step_name=task_name, total_count=len(group.members), errors=serial_errors
                 )
 
+            if self.timings:
+                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+                await self.console.aprint(f"{prefix} {timing}")
             return None
 
         async def invoke_command_captured(
