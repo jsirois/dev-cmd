@@ -1,6 +1,8 @@
 # Copyright 2025 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import importlib.util
@@ -9,10 +11,11 @@ import os
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import MutableMapping
+from typing import IO, Iterator, MutableMapping
 
 from dev_cmd import color
 from dev_cmd.model import PythonConfig
@@ -40,6 +43,17 @@ def _fingerprint(data: bytes) -> str:
     return base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode()
 
 
+@contextmanager
+def named_temporary_file(prefix: str | None = None) -> Iterator[IO[bytes]]:
+    # Work around Windows issue with auto-delete: https://bugs.python.org/issue14243
+    fp = NamedTemporaryFile(prefix=prefix, delete=False)
+    try:
+        with fp:
+            yield fp
+    finally:
+        os.remove(fp.name)
+
+
 def ensure(config: PythonConfig, python: str) -> Venv:
     fingerprint = _fingerprint(
         json.dumps(
@@ -65,7 +79,7 @@ def ensure(config: PythonConfig, python: str) -> Venv:
                     f"{color.yellow(f'Setting up venv for --python {python}')}...", file=sys.stderr
                 )
                 work_dir = Path(f"{venv_dir}.work")
-                with NamedTemporaryFile(prefix="dev-cmd-venv.") as reqs_fp:
+                with named_temporary_file(prefix="dev-cmd-venv.") as reqs_fp:
                     requirements_export_command = [
                         (reqs_fp.name if arg == "{requirements.txt}" else arg)
                         for arg in config.requirements_export_command
