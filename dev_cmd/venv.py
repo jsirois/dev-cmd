@@ -80,6 +80,7 @@ def ensure(config: PythonConfig, python: str) -> Venv:
                 )
                 work_dir = Path(f"{venv_dir}.work")
                 with named_temporary_file(prefix="dev-cmd-venv.") as reqs_fp:
+                    reqs_fp.close()
                     requirements_export_command = [
                         (reqs_fp.name if arg == "{requirements.txt}" else arg)
                         for arg in config.requirements_export_command
