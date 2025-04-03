@@ -12,13 +12,13 @@ import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import IO, Iterator, MutableMapping
+from textwrap import dedent
+from typing import IO, Iterator
 
 from dev_cmd import color
-from dev_cmd.model import PythonConfig
+from dev_cmd.model import PythonConfig, Venv
 
 AVAILABLE = False
 
@@ -26,17 +26,6 @@ if shutil.which("pex3") and importlib.util.find_spec("filelock"):
     from filelock import FileLock
 
     AVAILABLE = True
-
-
-@dataclass(frozen=True)
-class Venv:
-    dir: str
-    python: str
-    bin_path: str
-
-    def update_path(self, env: MutableMapping[str, str]) -> None:
-        path = env.pop("PATH", None)
-        env["PATH"] = (self.bin_path + os.pathsep + path) if path else self.bin_path
 
 
 def _fingerprint(data: bytes) -> str:
@@ -54,7 +43,7 @@ def named_temporary_file(prefix: str | None = None) -> Iterator[IO[bytes]]:
         os.remove(fp.name)
 
 
-def ensure(config: PythonConfig, python: str) -> Venv:
+def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) -> Venv:
     fingerprint = _fingerprint(
         json.dumps(
             {
@@ -124,17 +113,40 @@ def ensure(config: PythonConfig, python: str) -> Venv:
                         stdout=sys.stderr.fileno(),
                         check=True,
                     )
+
+                subprocess.run(
+                    args=[python_exe, "-m", "pip", "install", "packaging"]
+                    + list(config.extra_requirements),
+                    stdout=sys.stderr.fileno(),
+                    check=True,
+                )
+                marker_environment = json.loads(
                     subprocess.run(
-                        args=[python_exe, "-m", "pip", "install"] + list(config.extra_requirements),
-                        stdout=sys.stderr.fileno(),
+                        args=[
+                            python_exe,
+                            "-c",
+                            dedent(
+                                """\
+                                import json
+                                import sys
+
+                                from packaging import markers
+
+                                json.dump(markers.default_environment(), sys.stdout)
+                                """
+                            ),
+                        ],
+                        stdout=subprocess.PIPE,
                         check=True,
-                    )
+                    ).stdout
+                )
 
                 with (work_dir / layout_file.name).open("w") as out_fp:
                     json.dump(
                         {
                             "python": python_exe.replace(str(work_dir), str(venv_dir)),
                             "bin-path": script_dir.replace(str(work_dir), str(venv_dir)),
+                            "marker-environment": marker_environment,
                         },
                         out_fp,
                     )
@@ -143,4 +155,19 @@ def ensure(config: PythonConfig, python: str) -> Venv:
     with layout_file.open() as in_fp:
         data = json.load(in_fp)
 
-    return Venv(dir=venv_dir.as_posix(), python=data["python"], bin_path=data["bin-path"])
+    try:
+        return Venv(
+            dir=venv_dir.as_posix(),
+            python=data["python"],
+            bin_path=data["bin-path"],
+            marker_environment=data["marker-environment"],
+        )
+    except KeyError:
+        if not rebuild_if_needed:
+            raise
+        print(
+            color.yellow(f"Venv for --python {python} at {venv_dir} is out of date, rebuilding."),
+            file=sys.stderr,
+        )
+        shutil.rmtree(venv_dir)
+        return ensure(config, python, rebuild_if_needed=False)

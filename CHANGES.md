@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.21.1
+
+Fix `when` environment marker evaluation to take place in the requested Python's environment when a
+custom `--python` is specified.
+
 ## 0.21.0
 
 Add support for `--python PYTHON` to have `dev-cmd` establish a custom python venv to run commands

@@ -12,7 +12,8 @@ from typing import Any, Container, Iterable, Iterator, Mapping, Set, cast
 
 from packaging.markers import InvalidMarker, Marker
 
-from dev_cmd.errors import InvalidModelError
+from dev_cmd import venv
+from dev_cmd.errors import InvalidArgumentError, InvalidModelError
 from dev_cmd.expansion import expand
 from dev_cmd.model import (
     Command,
@@ -26,6 +27,7 @@ from dev_cmd.model import (
 )
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import PyProjectToml
+from dev_cmd.venv import Venv
 
 
 def _assert_list_str(obj: Any, *, path: str) -> list[str]:
@@ -50,6 +52,7 @@ def _parse_commands(
     commands: dict[str, Any] | None,
     required_steps: dict[str, list[tuple[Factor, ...]]],
     project_dir: Path,
+    marker_environment: dict[str, str] | None,
 ) -> Iterator[Command]:
     if not commands:
         raise InvalidModelError(
@@ -246,7 +249,7 @@ def _parse_commands(
                     when=when,
                 )
 
-            if not when or when.evaluate():
+            if not when or when.evaluate(marker_environment):
                 final_name = f"{name}{factors_suffix}"
                 previous_original_name = seen_commands.get(final_name)
                 if previous_original_name and previous_original_name != original_name:
@@ -325,7 +328,11 @@ def _parse_group(
     return Group(members=tuple(members))
 
 
-def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) -> Iterator[Task]:
+def _parse_tasks(
+    tasks: dict[str, Any] | None,
+    commands: Mapping[str, Command],
+    marker_environment: dict[str, str] | None,
+) -> Iterator[Task]:
     if not tasks:
         return
 
@@ -396,7 +403,7 @@ def _parse_tasks(tasks: dict[str, Any] | None, commands: Mapping[str, Command]) 
                 f"of type {type(data)}."
             )
 
-        if not when or when.evaluate():
+        if not when or when.evaluate(marker_environment):
             if name in commands:
                 raise InvalidModelError(
                     f"The task {name!r} collides with command {name!r}. Tasks and commands share "
@@ -538,7 +545,7 @@ def _parse_python(python: Any) -> PythonConfig | None:
             extra_requirements_data, path="[tool.dev-cmd.python.requirements] `extra-requirements`"
         )
         if extra_requirements_data is not None
-        else ["-e ."]
+        else ["-e", "./"]
     )
 
     return PythonConfig(
@@ -576,7 +583,9 @@ def _gather_all_required_step_names(
     return tuple(dict.fromkeys(required_step_names))
 
 
-def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Configuration:
+def parse_dev_config(
+    pyproject_toml: PyProjectToml, *requested_steps: str, requested_python: str | None = None
+) -> Configuration:
     pyproject_data = pyproject_toml.parse()
     try:
         dev_cmd_data = _assert_dict_str_keys(
@@ -587,6 +596,19 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
             f"The commands, tasks and defaults run-dev acts upon must be defined in the "
             f"[tool.dev-cmd] table in {pyproject_toml}: {e}"
         )
+
+    python_config = _parse_python(dev_cmd_data.pop("python", None))
+    python_venv: Venv | None = None
+    marker_environment: dict[str, str] | None = None
+    if requested_python:
+        if not python_config:
+            raise InvalidArgumentError(
+                f"You requested a custom Python of {requested_python} but have not configured "
+                f"`[tool.dev-cmd.python]`.\n"
+                f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
+            )
+        python_venv = venv.ensure(python_config, requested_python)
+        marker_environment = dict(python_venv.marker_environment)
 
     def pop_dict(key: str, *, path: str) -> dict[str, Any] | None:
         data = dev_cmd_data.pop(key, None)
@@ -620,7 +642,10 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
     commands = {
         cmd.name: cmd
         for cmd in _parse_commands(
-            commands_data, required_steps, project_dir=pyproject_toml.path.parent
+            commands_data,
+            required_steps,
+            project_dir=pyproject_toml.path.parent,
+            marker_environment=marker_environment,
         )
     }
     if not commands:
@@ -629,11 +654,13 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
             "configured to use the dev task runner."
         )
 
-    tasks = {task.name: task for task in _parse_tasks(tasks_data, commands)}
+    tasks = {
+        task.name: task
+        for task in _parse_tasks(tasks_data, commands, marker_environment=marker_environment)
+    }
     default = _parse_default(default_step_name, commands, tasks)
     exit_style = _parse_exit_style(dev_cmd_data.pop("exit-style", None))
     grace_period = _parse_grace_period(dev_cmd_data.pop("grace-period", None))
-    python_config = _parse_python(dev_cmd_data.pop("python", None))
 
     if dev_cmd_data:
         raise InvalidModelError(
@@ -646,6 +673,6 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
         default=default,
         exit_style=exit_style,
         grace_period=grace_period,
-        python_config=python_config,
+        venv=python_venv,
         source=pyproject_toml.path,
     )

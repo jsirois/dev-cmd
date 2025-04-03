@@ -24,7 +24,6 @@ from dev_cmd.model import Configuration, ExitStyle
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import find_pyproject_toml
-from dev_cmd.venv import Venv
 
 DEFAULT_EXIT_STYLE = ExitStyle.AFTER_STEP
 DEFAULT_GRACE_PERIOD = 5.0
@@ -38,7 +37,6 @@ def _run(
     parallel: bool = False,
     timings: bool = False,
     extra_args: Iterable[str] = (),
-    python: str | None = None,
     exit_style_override: ExitStyle | None = None,
     grace_period_override: float | None = None,
 ) -> None:
@@ -60,16 +58,6 @@ def _run(
             f"configured command or task names."
         )
 
-    python_venv: Venv | None = None
-    if python:
-        if not config.python_config:
-            raise InvalidArgumentError(
-                f"You requested a custom Python of {python} but have not configured "
-                f"`[tool.dev-cmd.python]`.\n"
-                f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
-            )
-        python_venv = venv.ensure(config.python_config, python)
-
     if names:
         try:
             invocation = Invocation.create(
@@ -78,7 +66,7 @@ def _run(
                 console=console,
                 grace_period=grace_period,
                 timings=timings,
-                venv=python_venv,
+                venv=config.venv,
             )
         except KeyError as e:
             raise InvalidArgumentError(
@@ -98,7 +86,7 @@ def _run(
             console=console,
             grace_period=grace_period,
             timings=timings,
-            venv=python_venv,
+            venv=config.venv,
         )
     else:
         raise InvalidArgumentError(
@@ -383,7 +371,7 @@ def main() -> Any:
     console = Console(quiet=options.quiet)
     try:
         pyproject_toml = find_pyproject_toml()
-        config = parse_dev_config(pyproject_toml, *options.tasks)
+        config = parse_dev_config(pyproject_toml, *options.tasks, requested_python=options.python)
     except DevCmdError as e:
         return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
 
@@ -400,7 +388,6 @@ def main() -> Any:
             parallel=options.parallel,
             timings=options.timings,
             extra_args=options.extra_args,
-            python=options.python,
             exit_style_override=options.exit_style,
             grace_period_override=options.grace_period,
         )

@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePath
-from typing import Any, Container
+from typing import Any, Container, Mapping, MutableMapping
 
 from packaging.markers import Marker
 
@@ -81,11 +82,23 @@ class PythonConfig:
 
 
 @dataclass(frozen=True)
+class Venv:
+    dir: str
+    python: str
+    bin_path: str
+    marker_environment: Mapping[str, str]
+
+    def update_path(self, env: MutableMapping[str, str]) -> None:
+        path = env.pop("PATH", None)
+        env["PATH"] = (self.bin_path + os.pathsep + path) if path else self.bin_path
+
+
+@dataclass(frozen=True)
 class Configuration:
     commands: tuple[Command, ...]
     tasks: tuple[Task, ...]
     default: Command | Task | None = None
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
-    python_config: PythonConfig | None = None
+    venv: Venv | None = None
     source: Any = "<code>"
