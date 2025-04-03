@@ -44,6 +44,9 @@ classifiers = [
 
 dynamic = ["version"]
 
+[project.optional-dependencies]
+old-pythons = ["pex", "filelock"]
+
 [project.urls]
 Repository = "https://github.com/jsirois/dev-cmd"
 "Bug Tracker" = "https://github.com/jsirois/dev-cmd/issues"
@@ -62,6 +65,7 @@ include = ["dev_cmd*"]
 [dependency-groups]
 dev = [
     "ansicolors",
+    "dev-cmd[old-pythons]",
     "mypy",
     "pytest",
     "ruff",
@@ -86,6 +90,9 @@ extend-select = ["I"]
 
 [tool.uv]
 required-version = ">=0.5.19"
+cache-keys = [
+    {env = "DEV_CMD_UV_FORCE_BUILD"}
+]
 
 [tool.dev-cmd.commands]
 fmt = ["ruff", "format"]
@@ -129,3 +136,6 @@ steps = [["check-fmt", "check-lint", "type-check", "test"]]
 [tool.dev-cmd]
 default = "checks"
 exit-style = "immediate"
+
+[tool.dev-cmd.python.requirements]
+export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]

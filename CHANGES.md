@@ -1,5 +1,15 @@
 # Release Notes
 
+## 0.21.0
+
+Add support for `--python PYTHON` to have `dev-cmd` establish a custom python venv to run commands
+in. This option is only present if you install `dev-cmd` with the `old-pythons` extra; e.g. a
+requirement string like `"dev-cmd[old-pythons]"`. As the extra name suggests, this will allow you to
+run development commands against Pythons older than those supported by the underlying development
+tool you use to run `dev-cmd`.
+
+This release also fixes a regression in `--color` output handling.
+
 ## 0.20.3
 
 Fix command timing regression that reported ~0s for serially executed commands.

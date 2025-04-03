@@ -5,22 +5,25 @@ from __future__ import annotations
 
 import asyncio
 import os
+import platform
+import shutil
 import sys
 import time
+import zipfile
 from asyncio import CancelledError
 from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, AsyncIterator, Container
-
-import colors
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
 from dev_cmd.console import Console
 from dev_cmd.errors import ExecutionError, InvalidModelError
 from dev_cmd.model import Command, ExitStyle, Group, Task
+from dev_cmd.venv import Venv
 
 
 def _step_prefix(step_name: str | None, serial: bool) -> str:
@@ -49,6 +52,7 @@ class Invocation:
         skips: Container[str],
         grace_period: float,
         timings: bool = False,
+        venv: Venv | None = None,
         console: Console = Console(),
     ) -> Invocation:
         accepts_extra_args: Command | None = None
@@ -80,6 +84,7 @@ class Invocation:
             accepts_extra_args=accepts_extra_args is not None,
             grace_period=grace_period,
             timings=timings,
+            venv=venv,
             console=console,
         )
 
@@ -88,6 +93,7 @@ class Invocation:
     accepts_extra_args: bool
     grace_period: float
     timings: bool
+    venv: Venv | None
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
 
@@ -181,11 +187,31 @@ class Invocation:
         env.update(command.extra_env)
         if USE_COLOR and not any(color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR")):
             env.setdefault("FORCE_COLOR", "1")
+        if self.venv:
+            self.venv.update_path(env)
 
         if args[0].endswith(".py"):
-            args.insert(0, sys.executable)
+            args.insert(0, self.venv.python if self.venv else sys.executable)
         elif "python" == args[0]:
-            args[0] = sys.executable
+            args[0] = self.venv.python if self.venv else sys.executable
+        elif self.venv:
+            exe = shutil.which(args[0], path=env["PATH"])
+            if exe and os.path.dirname(exe) == self.venv.bin_path:
+
+                def adjust_args():
+                    args[0] = exe
+                    args.insert(0, self.venv.python)
+
+                # N.B.: Windows console scripts are native executables with zip trailers. Python
+                # can run these directly.
+                if "Windows" == platform.system() and zipfile.is_zipfile(exe):
+                    adjust_args()
+                else:
+                    with Path(exe).open("rb") as exe_fp:
+                        if exe_fp.read(2) == b"#!" and exe_fp.readline().strip().startswith(
+                            self.venv.dir.encode()
+                        ):
+                            adjust_args()
 
         process = await asyncio.create_subprocess_exec(
             args[0],
@@ -221,7 +247,7 @@ class Invocation:
             return ExecutionError.from_failed_cmd(command, returncode)
         finally:
             if self.timings:
-                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+                timing = color.color(f"took {time.time() - start:.3f}s", fg="gray")
                 await self.console.aprint(
                     f"{prefix} {color.color(f'{color.bold(command.name)} {timing}', fg=command_name_color)}"
                 )
@@ -268,7 +294,7 @@ class Invocation:
                     serial_errors.append(error)
 
             if self.timings:
-                timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+                timing = color.color(f"took {time.time() - start:.3f}s", fg="gray")
                 await self.console.aprint(f"{prefix} {timing}")
 
             if len(serial_errors) == 1:
@@ -356,7 +382,7 @@ class Invocation:
             )
             if self.timings:
                 await self.console.aprint(
-                    f"{prefix} {cmd_name} {colors.color(f'took {elapsed:.3f}s', fg='gray')}:",
+                    f"{prefix} {cmd_name} {color.color(f'took {elapsed:.3f}s', fg='gray')}:",
                     use_stderr=True,
                 )
             else:
@@ -371,7 +397,7 @@ class Invocation:
                 errors.append(error)
 
         if self.timings:
-            timing = colors.color(f"took {time.time() - start:.3f}s", fg="gray")
+            timing = color.color(f"took {time.time() - start:.3f}s", fg="gray")
             await self.console.aprint(f"{prefix} {timing}")
 
         if len(errors) == 1:

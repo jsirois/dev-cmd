@@ -74,10 +74,18 @@ class ExitStyle(Enum):
 
 
 @dataclass(frozen=True)
+class PythonConfig:
+    input_files: tuple[str, ...]
+    requirements_export_command: tuple[str, ...]
+    extra_requirements: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Configuration:
     commands: tuple[Command, ...]
     tasks: tuple[Task, ...]
     default: Command | Task | None = None
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
+    python_config: PythonConfig | None = None
     source: Any = "<code>"

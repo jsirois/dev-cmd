@@ -14,7 +14,16 @@ from packaging.markers import InvalidMarker, Marker
 
 from dev_cmd.errors import InvalidModelError
 from dev_cmd.expansion import expand
-from dev_cmd.model import Command, Configuration, ExitStyle, Factor, FactorDescription, Group, Task
+from dev_cmd.model import (
+    Command,
+    Configuration,
+    ExitStyle,
+    Factor,
+    FactorDescription,
+    Group,
+    PythonConfig,
+    Task,
+)
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import PyProjectToml
 
@@ -482,6 +491,63 @@ def _parse_grace_period(grace_period: Any) -> float | None:
     return float(grace_period)
 
 
+def _parse_python(python: Any) -> PythonConfig | None:
+    if python is None:
+        return None
+
+    python_data = _assert_dict_str_keys(python, path="[tool.dev-cmd.python]")
+    requirements = python_data.pop("requirements", None)
+    if requirements is None:
+        raise InvalidModelError(
+            "Configuration of [tool.dev-cmd.python] requires a `requirements` table."
+        )
+    if python_data:
+        raise InvalidModelError(
+            f"Unexpected configuration keys in the [tool.dev-cmd.python] table: "
+            f"{' '.join(python_data)}"
+        )
+
+    requirements_data = _assert_dict_str_keys(
+        requirements, path="[tool.dev-cmd.python.requirements]"
+    )
+    export_command_data = requirements_data.pop("export-command", None)
+    if export_command_data is None:
+        raise InvalidModelError(
+            "Configuration of [tool.dev-cmd.python.requirements] requires an `export-command`."
+        )
+    export_command = _assert_list_str(
+        export_command_data, path="[tool.dev-cmd.python.requirements] `export-command`"
+    )
+
+    extra_requirements_data = requirements_data.pop("extra-requirements", None)
+    input_files_data = requirements_data.pop("input-files", None)
+    if requirements_data:
+        raise InvalidModelError(
+            f"Unexpected configuration keys in the [tool.dev-cmd.python.requirements] table: "
+            f"{' '.join(requirements_data)}"
+        )
+
+    input_files = (
+        _assert_list_str(input_files_data, path="[tool.dev-cmd.python.requirements] `input-files`")
+        if input_files_data is not None
+        else ["pyproject.toml"]
+    )
+
+    extra_requirements = (
+        _assert_list_str(
+            extra_requirements_data, path="[tool.dev-cmd.python.requirements] `extra-requirements`"
+        )
+        if extra_requirements_data is not None
+        else ["-e ."]
+    )
+
+    return PythonConfig(
+        input_files=tuple(input_files),
+        requirements_export_command=tuple(export_command),
+        extra_requirements=tuple(extra_requirements),
+    )
+
+
 def _iter_all_required_step_names(
     value: Any, tasks_data: Mapping[str, Any], seen: Set[str]
 ) -> Iterator[str]:
@@ -567,6 +633,7 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
     default = _parse_default(default_step_name, commands, tasks)
     exit_style = _parse_exit_style(dev_cmd_data.pop("exit-style", None))
     grace_period = _parse_grace_period(dev_cmd_data.pop("grace-period", None))
+    python_config = _parse_python(dev_cmd_data.pop("python", None))
 
     if dev_cmd_data:
         raise InvalidModelError(
@@ -579,5 +646,6 @@ def parse_dev_config(pyproject_toml: PyProjectToml, *requested_steps: str) -> Co
         default=default,
         exit_style=exit_style,
         grace_period=grace_period,
+        python_config=python_config,
         source=pyproject_toml.path,
     )

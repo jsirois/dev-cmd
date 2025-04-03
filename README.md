@@ -319,6 +319,60 @@ propagated until after `lint` completed, finishing the step `fmt` found itself i
 for `exit-style` is `end` which causes `dev-cmd` to run everything to completion, only listing
 errors at the very end.
 
+### Custom Pythons
+
+If you'd like to use a modern development tool, but you need to run commands against older Pythons
+than it supports, you may be able to leverage the `--python` option as a workaround. There are a few
+preconditions your setup needs to satisfy to be able to use this approach:
+1. Your development tool needs to support locking for older pythons if it uses lock files.
+2. Your development tool needs to be able to export your project development requirements in Pip
+   requirements.txt format.
+
+If your development tool meets these requirements (for example, `uv` does), then in order to have
+access to the `--python` option you need to install `dev-cmd` with the `old-pythons` extra;
+e.g.: a requirement string like `"dev-cmd[old-pythons]"`.
+
+With that done, a minimal configuration looks like so:
+```toml
+[tool.dev-cmd.python.requirements]
+export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+```
+
+Here your export command just needs to be able to output a Pip requirements.txt compatible
+requirements file to build the venv with. The `{requirements.txt}` placeholder should be inserted in
+the command line wherever its output path argument lives.
+
+By default, `dev-cmd` also installs your project in each custom venv in editable mode as an extra
+requirement. You may wish to adjust which extra requirements are installed, in which case you use
+the `extra-requirements` key:
+```toml
+[tool.dev-cmd.python.requirements]
+export-command = [
+   "uv", "export", "-q",
+   "--no-emit-project",
+   "--no-emit-package", "subproject",
+   "-o", "{requirements.txt}"
+]
+extra-requirements = [
+   "-e .",
+   "subproject @ ./subproject"
+]
+```
+
+Here we exclude the main project and a local subproject from the requirements export since `uv`
+exports hashes for these which Pip does not support for directories. To work around, we just list
+these two local projects in `extra-requirements` and they get installed as-is without a hash check
+after the exported requirements are installed.
+
+Venvs are created under a `.dev-cmd` directory and are cached base on the full contents of
+`pyproject.toml` by default. To change the list of files used to form the cache key for the venvs,
+use the `input-files` key. Here invalidation is turned off with an empty list:
+```toml
+[tool.dev-cmd.python.requirements]
+export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+input-files = []
+```
+
 ## Execution
 
 The `dev-cmd` tool supports several command line options to control execution in ad-hoc ways. You

@@ -5,6 +5,7 @@ __pycache__/
 /dist/
 
 # Tool caches.
+.dev-cmd/
 .mypy_cache*/
 .pytest_cache/
 .ruff_cache/

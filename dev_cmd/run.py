@@ -14,7 +14,7 @@ from asyncio import CancelledError
 from dataclasses import dataclass
 from typing import Any, Collection, Iterable
 
-from dev_cmd import __version__, color
+from dev_cmd import __version__, color, venv
 from dev_cmd.color import ColorChoice
 from dev_cmd.console import Console
 from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
@@ -24,6 +24,7 @@ from dev_cmd.model import Configuration, ExitStyle
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import find_pyproject_toml
+from dev_cmd.venv import Venv
 
 DEFAULT_EXIT_STYLE = ExitStyle.AFTER_STEP
 DEFAULT_GRACE_PERIOD = 5.0
@@ -37,6 +38,7 @@ def _run(
     parallel: bool = False,
     timings: bool = False,
     extra_args: Iterable[str] = (),
+    python: str | None = None,
     exit_style_override: ExitStyle | None = None,
     grace_period_override: float | None = None,
 ) -> None:
@@ -58,6 +60,16 @@ def _run(
             f"configured command or task names."
         )
 
+    python_venv: Venv | None = None
+    if python:
+        if not config.python_config:
+            raise InvalidArgumentError(
+                f"You requested a custom Python of {python} but have not configured "
+                f"`[tool.dev-cmd.python]`.\n"
+                f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
+            )
+        python_venv = venv.ensure(config.python_config, python)
+
     if names:
         try:
             invocation = Invocation.create(
@@ -66,6 +78,7 @@ def _run(
                 console=console,
                 grace_period=grace_period,
                 timings=timings,
+                venv=python_venv,
             )
         except KeyError as e:
             raise InvalidArgumentError(
@@ -80,7 +93,12 @@ def _run(
             )
     elif config.default:
         invocation = Invocation.create(
-            config.default, skips=skips, console=console, grace_period=grace_period, timings=timings
+            config.default,
+            skips=skips,
+            console=console,
+            grace_period=grace_period,
+            timings=timings,
+            venv=python_venv,
         )
     else:
         raise InvalidArgumentError(
@@ -117,6 +135,7 @@ class Options:
     parallel: bool
     timings: bool
     extra_args: tuple[str, ...]
+    python: str | None = None
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
 
@@ -170,6 +189,14 @@ def _parse_args() -> Options:
         action="store_true",
         help="Emit timing information for each command run.",
     )
+
+    if venv.AVAILABLE:
+        parser.add_argument(
+            "--py",
+            "--python",
+            dest="python",
+            help="Select an older python to run dev-cmd against.",
+        )
 
     exit_style_group = parser.add_mutually_exclusive_group()
     exit_style_group.add_argument(
@@ -265,6 +292,7 @@ def _parse_args() -> Options:
         parallel=parallel,
         timings=options.timings,
         extra_args=tuple(extra_args) if extra_args is not None else (),
+        python=getattr(options, "python", None),
         exit_style=options.exit_style,
         grace_period=options.grace_period,
     )
@@ -372,6 +400,7 @@ def main() -> Any:
             parallel=options.parallel,
             timings=options.timings,
             extra_args=options.extra_args,
+            python=options.python,
             exit_style_override=options.exit_style,
             grace_period_override=options.grace_period,
         )
