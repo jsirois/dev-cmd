@@ -100,8 +100,6 @@ def ensure(config: PythonConfig, python: str) -> Venv:
                             "--pip",
                             "--dest-dir",
                             work_dir,
-                            "-r",
-                            reqs_fp.name,
                         ],
                         check=True,
                     )
@@ -122,7 +120,12 @@ def ensure(config: PythonConfig, python: str) -> Venv:
                         check=True,
                     )
                     subprocess.run(
-                        args=[python_exe, "-m", "pip", "install", "-e", "."],
+                        args=[python_exe, "-m", "pip", "install", "-r", reqs_fp.name],
+                        stdout=sys.stderr.fileno(),
+                        check=True,
+                    )
+                    subprocess.run(
+                        args=[python_exe, "-m", "pip", "install"] + list(config.extra_requirements),
                         stdout=sys.stderr.fileno(),
                         check=True,
                     )

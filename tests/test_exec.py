@@ -75,7 +75,7 @@ def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePa
                 "-o",
                 "{{requirements.txt}}",
             ]
-            extra-requirements = ["dev-cmd[old-pythons] @ {project_dir.as_posix()}"]
+            extra-requirements = ["dev-cmd[old-pythons] @ file://{project_dir.as_posix()}"]
             """
         )
     )
@@ -88,21 +88,10 @@ def script(tmp_path: Path) -> PurePath:
     script.write_text(
         dedent(
             """\
-            import os
             import sys
 
-            try:
-                import colors
-            except ImportError:
-                print(f">>> {sys.executable=}", file=sys.stderr)
-                print(f">>> {sys.prefix=}", file=sys.stderr)
-                print(f">>> {sys.base_prefix=}", file=sys.stderr)
-                print(f">>> sys.path:", file=sys.stderr)
-                for entry in sys.path:
-                    print(f"... {entry=}:", file=sys.stderr)
-                    for index, top_level in enumerate(os.listdir(entry)):
-                        print(f"    {index}) {top_level=}", file=sys.stderr)
-                raise
+            import colors
+
 
             if sys.argv[1].endswith(":"):
                 color = sys.argv[1][:-1]
