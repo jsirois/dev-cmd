@@ -95,6 +95,8 @@ def script(tmp_path: Path) -> PurePath:
                 import colors
             except ImportError:
                 print(f">>> {sys.executable=}", file=sys.stderr)
+                print(f">>> {sys.prefix=}", file=sys.stderr)
+                print(f">>> {sys.base_prefix=}", file=sys.stderr)
                 print(f">>> sys.path:", file=sys.stderr)
                 for entry in sys.path:
                     print(f"... {entry=}:", file=sys.stderr)
