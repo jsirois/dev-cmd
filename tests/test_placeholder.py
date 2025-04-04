@@ -36,9 +36,9 @@ def test_substitute_env() -> None:
     assert "baz" == substitute(env, "{env.DNE:baz}"), "Expected defaulting to work."
     assert "env.FOO" == substitute(env, "{env.DNE:env.FOO}")
 
-    assert "bar" == substitute(
-        env, "{env.DNE:{env.also_DNE:{env.FOO}}}"
-    ), "Expected recursive defaults would work."
+    assert "bar" == substitute(env, "{env.DNE:{env.also_DNE:{env.FOO}}}"), (
+        "Expected recursive defaults would work."
+    )
 
     with pytest.raises(ValueError, match=re.escape("The environment variable 'DNE' is not set.")):
         env.substitute("{env.DNE}")

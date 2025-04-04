@@ -1,5 +1,14 @@
 # Release Notes
 
+## 0.22.0
+
+Add support for per-`--python` venv setup customization. This allows for vagaries in older Pythons
+and the Pips that support them.
+
+Also provide finer-grained venv caching control with the new
+`[tool.dev-cmd.python.requirements] input-keys` for selecting just a subset of pyproject.toml's
+values to form the cache key.
+
 ## 0.21.1
 
 Fix `when` environment marker evaluation to take place in the requested Python's environment when a

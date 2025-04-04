@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
+import json
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -19,6 +20,7 @@ from dev_cmd.model import (
     Command,
     Configuration,
     ExitStyle,
+    ExtraRequirements,
     Factor,
     FactorDescription,
     Group,
@@ -46,6 +48,24 @@ def _assert_dict_str_keys(obj: Any, *, path: str) -> dict[str, Any]:
             f"{type(obj)}."
         )
     return cast("dict[str, Any]", obj)
+
+
+def _parse_when(data: dict[str, Any], table_path: str) -> Marker | None:
+    raw_when = data.pop("when", None)
+    if raw_when and not isinstance(raw_when, str):
+        raise InvalidModelError(
+            f"The {table_path} `when` value must be a string, "
+            f"given: {raw_when} of type {type(raw_when)}."
+        )
+    try:
+        return Marker(raw_when) if raw_when else None
+    except InvalidMarker as e:
+        raise InvalidModelError(
+            f"The {table_path} `when` value is not a valid marker "
+            f"expression: {e}{os.linesep}"
+            f"See: https://packaging.python.org/en/latest/specifications/"
+            f"dependency-specifiers/#environment-markers"
+        )
 
 
 def _parse_commands(
@@ -154,21 +174,7 @@ def _parse_commands(
                     )
                 factor_descriptions[Factor(factor_name)] = factor_desc
 
-            raw_when = command.pop("when", None)
-            if raw_when and not isinstance(raw_when, str):
-                raise InvalidModelError(
-                    f"The [tool.dev-cmd.commands.{name}] `when` value must be a string, "
-                    f"given: {raw_when} of type {type(raw_when)}."
-                )
-            try:
-                when = Marker(raw_when) if raw_when else None
-            except InvalidMarker as e:
-                raise InvalidModelError(
-                    f"The [tool.dev-cmd.commands.{name}] `when` value is not a valid marker "
-                    f"expression: {e}{os.linesep}"
-                    f"See: https://packaging.python.org/en/latest/specifications/"
-                    f"dependency-specifiers/#environment-markers"
-                )
+            when = _parse_when(command, table_path=f"[tool.dev-cmd.commands.{name}]")
 
             if data:
                 raise InvalidModelError(
@@ -370,21 +376,7 @@ def _parse_tasks(
                     f"given: {description} of type {type(description)}."
                 )
 
-            raw_when = data.pop("when", None)
-            if raw_when and not isinstance(raw_when, str):
-                raise InvalidModelError(
-                    f"The [tool.dev-cmd.tasks.{name}] `when` value must be a string, "
-                    f"given: {raw_when} of type {type(raw_when)}."
-                )
-            try:
-                when = Marker(raw_when) if raw_when else None
-            except InvalidMarker as e:
-                raise InvalidModelError(
-                    f"The [tool.dev-cmd.tasks.{name}] `when` value is not a valid marker "
-                    f"expression: {e}{os.linesep}"
-                    f"See: https://packaging.python.org/en/latest/specifications/"
-                    f"dependency-specifiers/#environment-markers"
-                )
+            when = _parse_when(data, table_path=f"[tool.dev-cmd.tasks.{name}]")
 
             if data:
                 raise InvalidModelError(
@@ -498,11 +490,19 @@ def _parse_grace_period(grace_period: Any) -> float | None:
     return float(grace_period)
 
 
-def _parse_python(python: Any) -> PythonConfig | None:
+def _parse_python(
+    python: str | None, python_config_data: Any, pyproject_data: dict[str, Any]
+) -> Venv | None:
     if python is None:
         return None
+    if not python_config_data:
+        raise InvalidArgumentError(
+            f"You requested a custom Python of {python} but have not configured "
+            f"`[tool.dev-cmd.python]`.\n"
+            f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
+        )
 
-    python_data = _assert_dict_str_keys(python, path="[tool.dev-cmd.python]")
+    python_data = _assert_dict_str_keys(python_config_data, path="[tool.dev-cmd.python]")
     requirements = python_data.pop("requirements", None)
     if requirements is None:
         raise InvalidModelError(
@@ -527,6 +527,7 @@ def _parse_python(python: Any) -> PythonConfig | None:
     )
 
     extra_requirements_data = requirements_data.pop("extra-requirements", None)
+    input_keys_data = requirements_data.pop("input-keys", None)
     input_files_data = requirements_data.pop("input-files", None)
     if requirements_data:
         raise InvalidModelError(
@@ -534,25 +535,123 @@ def _parse_python(python: Any) -> PythonConfig | None:
             f"{' '.join(requirements_data)}"
         )
 
-    input_files = (
+    input_files = set(
         _assert_list_str(input_files_data, path="[tool.dev-cmd.python.requirements] `input-files`")
         if input_files_data is not None
-        else ["pyproject.toml"]
+        else ()
     )
 
-    extra_requirements = (
-        _assert_list_str(
-            extra_requirements_data, path="[tool.dev-cmd.python.requirements] `extra-requirements`"
+    extra_requirements = ExtraRequirements.create()
+    if extra_requirements_data:
+        if not isinstance(extra_requirements_data, list):
+            raise InvalidModelError(
+                f"Expected [tool.dev-cmd.python.requirements] `extra-requirements` to be either a list "
+                f"of strings or a list of tables but given: {extra_requirements_data} of type "
+                f"{type(extra_requirements_data)}."
+            )
+
+        if all(isinstance(item, dict) for item in extra_requirements_data):
+            marker_environment = venv.marker_environment(python)
+            activated_index: int | None = None
+            for index, entry in enumerate(extra_requirements_data):
+                entry_data = cast(dict[str, Any], entry)
+                when = _parse_when(
+                    entry_data,
+                    table_path=f"[tool.dev-cmd.python.requirements] `extra-requirements[{index}]`",
+                )
+                if when and not when.evaluate(marker_environment):
+                    continue
+                if activated_index is not None:
+                    raise InvalidModelError(
+                        f"The `extra-requirements` entries at index {activated_index} and {index} "
+                        f"are both active.{os.linesep}"
+                        f"You can define multiple `extra-requirements`, but you must ensure that "
+                        f"they all define mutually exclusive `when` marker expressions."
+                    )
+
+                reqs_data = entry_data.pop("reqs", None)
+                pip_req = entry_data.pop("pip-req", None)
+                install_ops_data = entry_data.pop("install-opts", None)
+
+                if entry_data:
+                    raise InvalidModelError(
+                        f"Unexpected configuration keys in the [tool.dev-cmd.python.requirements] "
+                        f"`extra-requirements[{index}] table: {' '.join(entry_data)}"
+                    )
+
+                reqs: list[str] | None = None
+                if reqs_data:
+                    reqs = _assert_list_str(
+                        reqs_data,
+                        path=f"[tool.dev-cmd.python.requirements] `extra-requirements[{index}].reqs`",
+                    )
+
+                if pip_req and not isinstance(pip_req, str):
+                    raise InvalidModelError(
+                        f"The [tool.dev-cmd.python.requirements] "
+                        f"`extra-requirements[{index}].pip-req` value must be a string, but given: "
+                        f"{pip_req} of type {type(pip_req)}."
+                    )
+
+                install_opts: list[str] | None = None
+                if install_ops_data:
+                    install_opts = _assert_list_str(
+                        install_ops_data,
+                        path=(
+                            f"[tool.dev-cmd.python.requirements] "
+                            f"`extra-requirements[{index}].install-opts`"
+                        ),
+                    )
+
+                extra_requirements = ExtraRequirements.create(
+                    reqs=reqs, pip_req=pip_req, install_opts=install_opts
+                )
+                activated_index = index
+        else:
+            extra_requirements = ExtraRequirements.create(
+                reqs=_assert_list_str(
+                    extra_requirements_data,
+                    path="[tool.dev-cmd.python.requirements] `extra-requirements`",
+                ),
+            )
+
+    input_object = {
+        "extra_requirements": {
+            "reqs": extra_requirements.reqs,
+            "pip-req": extra_requirements.pip_req,
+            "install-opts": extra_requirements.install_opts,
+        }
+    }
+    if input_keys_data is None or input_keys_data:
+        input_files.discard("pyproject.toml")
+        input_keys = (
+            _assert_list_str(
+                input_keys_data, path="[tool.dev-cmd.python.requirements] `input-keys`"
+            )
+            if input_keys_data is not None
+            else ["build-system", "project", "project.optional-dependencies"]
         )
-        if extra_requirements_data is not None
-        else ["-e", "./"]
-    )
+        input_item_data: dict[str, Any] = {}
+        for key in input_keys:
+            value = pyproject_data
+            for component in key.split("."):
+                value = value.get(component, None)
+                if value is None:
+                    raise InvalidModelError(
+                        f"The [tool.dev-cmd.python.requirements] `input-keys` key of {key} could "
+                        f"not be found in pyproject.toml."
+                    )
+            input_item_data[key] = value
+        input_object["input-keys"] = input_item_data
+    input_data = json.dumps(input_object, sort_keys=True).encode()
 
-    return PythonConfig(
+    python_config = PythonConfig(
+        input_data=input_data,
         input_files=tuple(input_files),
         requirements_export_command=tuple(export_command),
-        extra_requirements=tuple(extra_requirements),
+        extra_requirements=extra_requirements,
     )
+    return venv.ensure(python_config, python)
 
 
 def _iter_all_required_step_names(
@@ -597,17 +696,13 @@ def parse_dev_config(
             f"[tool.dev-cmd] table in {pyproject_toml}: {e}"
         )
 
-    python_config = _parse_python(dev_cmd_data.pop("python", None))
-    python_venv: Venv | None = None
     marker_environment: dict[str, str] | None = None
-    if requested_python:
-        if not python_config:
-            raise InvalidArgumentError(
-                f"You requested a custom Python of {requested_python} but have not configured "
-                f"`[tool.dev-cmd.python]`.\n"
-                f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
-            )
-        python_venv = venv.ensure(python_config, requested_python)
+    python_venv = _parse_python(
+        python=requested_python,
+        python_config_data=dev_cmd_data.pop("python", None),
+        pyproject_data=pyproject_data,
+    )
+    if python_venv:
         marker_environment = dict(python_venv.marker_environment)
 
     def pop_dict(key: str, *, path: str) -> dict[str, Any] | None:

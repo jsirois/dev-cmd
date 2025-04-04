@@ -138,4 +138,6 @@ default = "checks"
 exit-style = "immediate"
 
 [tool.dev-cmd.python.requirements]
+input-keys = []
+input-files = ["uv.lock"]
 export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]

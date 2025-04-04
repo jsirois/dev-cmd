@@ -354,7 +354,7 @@ export-command = [
    "-o", "{requirements.txt}"
 ]
 extra-requirements = [
-   "-e .",
+   "-e", ".",
    "subproject @ ./subproject"
 ]
 ```
@@ -364,13 +364,31 @@ exports hashes for these which Pip does not support for directories. To work aro
 these two local projects in `extra-requirements` and they get installed as-is without a hash check
 after the exported requirements are installed.
 
-Venvs are created under a `.dev-cmd` directory and are cached base on the full contents of
-`pyproject.toml` by default. To change the list of files used to form the cache key for the venvs,
-use the `input-files` key. Here invalidation is turned off with an empty list:
+You may find the need to vary venv setup per Python `--version`. This is supported by specifying
+`extra-requirements` as a list of tables instead of a list of requirement strings. For example:
+```toml
+[[tool.dev-cmd.python.requirements.extra-requirements]]
+when = "python_version < '3.7'"
+pip-req = "pip<23"
+install-opts = ["--no-use-pep517"]
+reqs = ["-e", "./"]
+```
+
+You must ensure just one `extra-requirements` entry is selected per `--python` via a `when`
+environment marker. You can then customise the version of Pip selected for the venv via `pip-req`,
+the extra `reqs` to install and any custom `pip install` options you need.
+
+Venvs are created under a `.dev-cmd` directory and are cached based on the values of the
+"build-system", "project" and "project.optional-dependencies" in `pyproject.toml` by default. To
+change the default input keys, you can specify `input-keys`. You can also mix the full contents of
+any other files into the venv cache key using `input-files`. Here, combining both of these options,
+we turn off pyproject.toml inputs to the venv cache key and just rely on the contents of `uv.lock`,
+which is what the export command is powered by:
 ```toml
 [tool.dev-cmd.python.requirements]
 export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
-input-files = []
+input-keys = []
+input-files = ["uv.lock"]
 ```
 
 ## Execution

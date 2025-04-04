@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePath
-from typing import Any, Container, Mapping, MutableMapping
+from typing import Any, Container, Iterable, Mapping, MutableMapping
 
 from packaging.markers import Marker
 
@@ -75,10 +75,31 @@ class ExitStyle(Enum):
 
 
 @dataclass(frozen=True)
+class ExtraRequirements:
+    @classmethod
+    def create(
+        cls,
+        reqs: Iterable[str] | None = None,
+        pip_req: str | None = None,
+        install_opts: Iterable[str] | None = None,
+    ) -> ExtraRequirements:
+        return cls(
+            reqs=tuple(reqs or ["-e", "."]),
+            pip_req=pip_req or "pip",
+            install_opts=tuple(install_opts) if install_opts else (),
+        )
+
+    reqs: tuple[str, ...]
+    pip_req: str
+    install_opts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PythonConfig:
+    input_data: bytes
     input_files: tuple[str, ...]
     requirements_export_command: tuple[str, ...]
-    extra_requirements: tuple[str, ...]
+    extra_requirements: ExtraRequirements
 
 
 @dataclass(frozen=True)

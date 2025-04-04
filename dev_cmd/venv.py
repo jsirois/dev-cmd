@@ -12,10 +12,12 @@ import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
+from dataclasses import dataclass
+from os import fspath
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from textwrap import dedent
-from typing import IO, Iterator
+from typing import IO, Iterator, cast
 
 from dev_cmd import color
 from dev_cmd.model import PythonConfig, Venv
@@ -33,14 +35,106 @@ def _fingerprint(data: bytes) -> str:
 
 
 @contextmanager
-def named_temporary_file(prefix: str | None = None) -> Iterator[IO[bytes]]:
+def named_temporary_file(
+    tmp_dir: str | None = None, prefix: str | None = None
+) -> Iterator[IO[bytes]]:
     # Work around Windows issue with auto-delete: https://bugs.python.org/issue14243
-    fp = NamedTemporaryFile(prefix=prefix, delete=False)
+    fp = NamedTemporaryFile(dir=tmp_dir, prefix=prefix, delete=False)
     try:
         with fp:
             yield fp
     finally:
-        os.remove(fp.name)
+        try:
+            os.remove(fp.name)
+        except FileNotFoundError:
+            pass
+
+
+def _ensure_cache_dir() -> Path:
+    cache_dir = Path(os.path.abspath(os.environ.get("DEV_CMD_WORKSPACE_CACHE_DIR", ".dev-cmd")))
+    gitignore = cache_dir / ".gitignore"
+    if not gitignore.exists():
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with named_temporary_file(tmp_dir=fspath(cache_dir), prefix=".gitignore.") as gitignore_fp:
+            gitignore_fp.write(b"*\n")
+            gitignore_fp.close()
+            os.rename(gitignore_fp.name, gitignore)
+    return cache_dir
+
+
+@dataclass(frozen=True)
+class VenvLayout:
+    python: str
+    bin_path: str
+
+
+def _create_venv(python: str, venv_dir: str) -> VenvLayout:
+    subprocess.run(
+        args=[
+            "pex3",
+            "venv",
+            "create",
+            "--force",
+            "--python",
+            python,
+            "--pip",
+            "--dest-dir",
+            venv_dir,
+        ],
+        check=True,
+    )
+
+    result = subprocess.run(
+        args=["pex3", "venv", "inspect", venv_dir],
+        text=True,
+        stdout=subprocess.PIPE,
+        check=True,
+    )
+    venv_data = json.loads(result.stdout)
+    python_exe = venv_data["interpreter"]["binary"]
+    script_dir = venv_data["script_dir"]
+
+    return VenvLayout(python=python_exe, bin_path=script_dir)
+
+
+def marker_environment(python: str) -> dict[str, str]:
+    fingerprint = _fingerprint(python.encode())
+    markers_file = _ensure_cache_dir() / "interpreters" / f"markers.{fingerprint}.json"
+    if not os.path.exists(markers_file):
+        with FileLock(markers_file), TemporaryDirectory(
+            dir=markers_file.parent, prefix="packaging-venv."
+        ) as td:
+            print(
+                f"{color.yellow(f'Calculating environment markers for --python {python}')}...",
+                file=sys.stderr,
+            )
+            venv_layout = _create_venv(python, fspath(td))
+            subprocess.run(
+                args=[venv_layout.python, "-m", "pip", "install", "packaging"],
+                stdout=sys.stderr.fileno(),
+                check=True,
+            )
+            markers_file.write_bytes(
+                subprocess.run(
+                    args=[
+                        venv_layout.python,
+                        "-c",
+                        dedent(
+                            """\
+                            import json
+                            import sys
+
+                            from packaging import markers
+
+                            json.dump(markers.default_environment(), sys.stdout)
+                            """
+                        ),
+                    ],
+                    stdout=subprocess.PIPE,
+                    check=True,
+                ).stdout
+            )
+    return cast(dict[str, str], json.loads(markers_file.read_bytes()))
 
 
 def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) -> Venv:
@@ -48,18 +142,16 @@ def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) ->
         json.dumps(
             {
                 "python": python,
+                "input-data": _fingerprint(config.input_data),
                 "input-files": {
                     input_file: _fingerprint(Path(input_file).read_bytes())
                     for input_file in config.input_files
                 },
-            }
+            },
+            sort_keys=True,
         ).encode()
     )
-    venv_dir = (
-        Path(os.path.abspath(os.environ.get("DEV_CMD_WORKSPACE_CACHE_DIR", ".dev-cmd")))
-        / "venvs"
-        / fingerprint
-    )
+    venv_dir = _ensure_cache_dir() / "venvs" / fingerprint
     layout_file = venv_dir / ".dev-cmd-venv-layout.json"
     if not os.path.exists(venv_dir):
         with FileLock(f"{venv_dir}.lck"):
@@ -68,85 +160,46 @@ def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) ->
                     f"{color.yellow(f'Setting up venv for --python {python}')}...", file=sys.stderr
                 )
                 work_dir = Path(f"{venv_dir}.work")
+                venv_layout = _create_venv(python, venv_dir=fspath(work_dir))
                 with named_temporary_file(prefix="dev-cmd-venv.") as reqs_fp:
                     reqs_fp.close()
                     requirements_export_command = [
                         (reqs_fp.name if arg == "{requirements.txt}" else arg)
                         for arg in config.requirements_export_command
                     ]
-                    subprocess.run(
-                        args=requirements_export_command,
-                        check=True,
-                    )
+                    subprocess.run(args=requirements_export_command, check=True)
                     subprocess.run(
                         args=[
-                            "pex3",
-                            "venv",
-                            "create",
-                            "--force",
-                            "--python",
-                            python,
-                            "--pip",
-                            "--dest-dir",
-                            work_dir,
+                            venv_layout.python,
+                            "-m",
+                            "pip",
+                            "install",
+                            "-U",
+                            config.extra_requirements.pip_req,
                         ],
-                        check=True,
-                    )
-
-                    result = subprocess.run(
-                        args=["pex3", "venv", "inspect", work_dir],
-                        text=True,
-                        stdout=subprocess.PIPE,
-                        check=True,
-                    )
-                    venv_data = json.loads(result.stdout)
-                    python_exe = venv_data["interpreter"]["binary"]
-                    script_dir = venv_data["script_dir"]
-
-                    subprocess.run(
-                        args=[python_exe, "-m", "pip", "install", "-U", "pip"],
                         stdout=sys.stderr.fileno(),
                         check=True,
                     )
                     subprocess.run(
-                        args=[python_exe, "-m", "pip", "install", "-r", reqs_fp.name],
+                        args=[venv_layout.python, "-m", "pip", "install", "-r", reqs_fp.name],
                         stdout=sys.stderr.fileno(),
                         check=True,
                     )
 
                 subprocess.run(
-                    args=[python_exe, "-m", "pip", "install", "packaging"]
-                    + list(config.extra_requirements),
+                    args=[venv_layout.python, "-m", "pip", "install"]
+                    + list(config.extra_requirements.install_opts)
+                    + list(config.extra_requirements.reqs),
                     stdout=sys.stderr.fileno(),
                     check=True,
-                )
-                marker_environment = json.loads(
-                    subprocess.run(
-                        args=[
-                            python_exe,
-                            "-c",
-                            dedent(
-                                """\
-                                import json
-                                import sys
-
-                                from packaging import markers
-
-                                json.dump(markers.default_environment(), sys.stdout)
-                                """
-                            ),
-                        ],
-                        stdout=subprocess.PIPE,
-                        check=True,
-                    ).stdout
                 )
 
                 with (work_dir / layout_file.name).open("w") as out_fp:
                     json.dump(
                         {
-                            "python": python_exe.replace(str(work_dir), str(venv_dir)),
-                            "bin-path": script_dir.replace(str(work_dir), str(venv_dir)),
-                            "marker-environment": marker_environment,
+                            "python": venv_layout.python.replace(str(work_dir), str(venv_dir)),
+                            "bin-path": venv_layout.bin_path.replace(str(work_dir), str(venv_dir)),
+                            "marker-environment": marker_environment(python),
                         },
                         out_fp,
                     )
