@@ -63,8 +63,9 @@ def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePa
             [tool.dev-cmd.python.requirements]
             # Let all the test cases share the same cache keys since requirements are hard coded
             # here and the tests only append commands and tasks.
-
+            input-keys = []
             input-files = []
+
             export-command = [
                 "uv",
                 "export",
