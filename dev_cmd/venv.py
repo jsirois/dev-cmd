@@ -17,7 +17,7 @@ from os import fspath
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from textwrap import dedent
-from typing import IO, Iterator, cast
+from typing import IO, Dict, Iterator, cast
 
 from dev_cmd import color
 from dev_cmd.model import PythonConfig, Venv
@@ -134,7 +134,7 @@ def marker_environment(python: str) -> dict[str, str]:
                     check=True,
                 ).stdout
             )
-    return cast(dict[str, str], json.loads(markers_file.read_bytes()))
+    return cast(Dict[str, str], json.loads(markers_file.read_bytes()))
 
 
 def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) -> Venv:
