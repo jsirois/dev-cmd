@@ -101,7 +101,7 @@ def marker_environment(python: str) -> dict[str, str]:
     fingerprint = _fingerprint(python.encode())
     markers_file = _ensure_cache_dir() / "interpreters" / f"markers.{fingerprint}.json"
     if not os.path.exists(markers_file):
-        with FileLock(markers_file), TemporaryDirectory(
+        with FileLock(f"{markers_file}.lck"), TemporaryDirectory(
             dir=markers_file.parent, prefix="packaging-venv."
         ) as td:
             print(
@@ -114,7 +114,8 @@ def marker_environment(python: str) -> dict[str, str]:
                 stdout=sys.stderr.fileno(),
                 check=True,
             )
-            markers_file.write_bytes(
+            temp_markers_file = Path(td) / markers_file.name
+            temp_markers_file.write_bytes(
                 subprocess.run(
                     args=[
                         venv_layout.python,
@@ -134,6 +135,7 @@ def marker_environment(python: str) -> dict[str, str]:
                     check=True,
                 ).stdout
             )
+            temp_markers_file.rename(markers_file)
     return cast(Dict[str, str], json.loads(markers_file.read_bytes()))
 
 
