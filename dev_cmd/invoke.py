@@ -5,17 +5,13 @@ from __future__ import annotations
 
 import asyncio
 import os
-import platform
-import shutil
 import sys
 import time
-import zipfile
 from asyncio import CancelledError
 from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, AsyncIterator, Container
 
 from dev_cmd import color
@@ -194,24 +190,6 @@ class Invocation:
             args.insert(0, self.venv.python if self.venv else sys.executable)
         elif "python" == args[0]:
             args[0] = self.venv.python if self.venv else sys.executable
-        elif self.venv:
-            exe = shutil.which(args[0], path=env["PATH"])
-            if exe and os.path.dirname(exe) == self.venv.bin_path:
-
-                def adjust_args():
-                    args[0] = exe
-                    args.insert(0, self.venv.python)
-
-                # N.B.: Windows console scripts are native executables with zip trailers. Python
-                # can run these directly.
-                if "Windows" == platform.system() and zipfile.is_zipfile(exe):
-                    adjust_args()
-                else:
-                    with Path(exe).open("rb") as exe_fp:
-                        if exe_fp.read(2) == b"#!" and exe_fp.readline().strip().startswith(
-                            self.venv.dir.encode()
-                        ):
-                            adjust_args()
 
         process = await asyncio.create_subprocess_exec(
             args[0],

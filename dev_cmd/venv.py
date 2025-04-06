@@ -31,7 +31,7 @@ if shutil.which("pex3") and importlib.util.find_spec("filelock"):
 
 
 def _fingerprint(data: bytes) -> str:
-    return base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode()
+    return base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
 
 
 @contextmanager
@@ -293,10 +293,31 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                         check=True,
                     )
 
+                venv_bin_dir = os.path.dirname(venv_layout.python)
+                work_dir_path = str(work_dir)
+                work_dir_path_bytes = work_dir_path.encode()
+                venv_dir_path = str(venv_dir)
+                venv_dir_path_bytes = venv_dir_path.encode()
+                for path in os.listdir(venv_bin_dir):
+                    candidate_console_script = os.path.join(venv_bin_dir, path)
+                    with open(candidate_console_script, "rb") as candidate_fp:
+                        if candidate_fp.read(2) != b"#!":
+                            continue
+                        shebang = candidate_fp.readline()
+                        if not shebang.startswith(work_dir_path_bytes):
+                            continue
+                        with open(f"{candidate_console_script}.rewrite", "wb") as rewrite_fp:
+                            rewrite_fp.write(b"#!")
+                            rewrite_fp.write(
+                                shebang.replace(work_dir_path_bytes, venv_dir_path_bytes)
+                            )
+                            shutil.copyfileobj(candidate_fp, rewrite_fp)
+                    os.rename(rewrite_fp.name, candidate_console_script)
+
                 with (work_dir / layout_file.name).open("w") as out_fp:
                     json.dump(
                         {
-                            "python": venv_layout.python.replace(str(work_dir), str(venv_dir)),
+                            "python": venv_layout.python.replace(work_dir_path, venv_dir_path),
                             "marker-environment": marker_environment(python),
                         },
                         out_fp,
