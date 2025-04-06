@@ -586,7 +586,7 @@ def _parse_python(
             ),
         )
 
-    cache_key_inputs_pyproject_data = defaults.cache_key_inputs.pyproject_data if defaults else {}
+    cache_key_inputs_pyproject_data = defaults.cache_key_inputs.pyproject_data if defaults else None
     pyproject_cache_keys_data = python_config_data.pop("pyproject-cache-keys", None)
 
     cache_key_inputs_paths = set(defaults.cache_key_inputs.paths) if defaults else set()
@@ -672,12 +672,13 @@ def _parse_python(
         cache_key_inputs_paths = input_paths
 
     if (
-        pyproject_cache_keys_data is None and not cache_key_inputs_pyproject_data
-    ) or pyproject_cache_keys_data:
+        pyproject_cache_keys_data is None and cache_key_inputs_pyproject_data is None
+    ) or pyproject_cache_keys_data is not None:
         cache_key_inputs_paths.discard("pyproject.toml")
         input_keys = (
             _assert_list_str(
-                pyproject_cache_keys_data, path="[tool.dev-cmd.python.requirements] `input-keys`"
+                pyproject_cache_keys_data,
+                path=f"[tool.dev-cmd] `python[{index}].pyproject-cache-keys]",
             )
             if pyproject_cache_keys_data is not None
             else ["build-system", "project", "project.optional-dependencies"]
@@ -689,14 +690,14 @@ def _parse_python(
                 value = value.get(component, None)
                 if value is None:
                     raise InvalidModelError(
-                        f"The [tool.dev-cmd.python.requirements] `input-keys` key of {key} could "
-                        f"not be found in pyproject.toml."
+                        f"The [tool.dev-cmd] `python[{index}].pyproject-cache-keys` key of {key} "
+                        f"could not be found in pyproject.toml."
                     )
             input_item_data[key] = value
         cache_key_inputs_pyproject_data = input_item_data
 
     cache_key_inputs = CacheKeyInputs(
-        pyproject_data=cache_key_inputs_pyproject_data,
+        pyproject_data=cache_key_inputs_pyproject_data or {},
         envs=cache_key_inputs_envs,
         paths=tuple(sorted(cache_key_inputs_paths)),
     )
@@ -747,7 +748,7 @@ def _parse_pythons(
         python_config = (
             defaults
             if index == 0
-            else _parse_python(0, python_data, pyproject_data, defaults=defaults)
+            else _parse_python(index, python_data, pyproject_data, defaults=defaults)
         )
         activated_index = index
 

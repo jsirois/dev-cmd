@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.23.2
+
+Fix `[[tool.dev-cmd.python]] pyproject-cache-keys` inheritance handling.
+
 ## 0.23.1
 
 Fix regression in `when` handling for 1st defined `[[tool.dev-cmd.python]]`.
