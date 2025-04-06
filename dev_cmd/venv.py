@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -20,6 +21,7 @@ from textwrap import dedent
 from typing import IO, Any, Dict, Iterator, cast
 
 from dev_cmd import color
+from dev_cmd.errors import DevCmdError
 from dev_cmd.model import Command, PythonConfig, Venv
 
 AVAILABLE = False
@@ -35,7 +37,7 @@ def _fingerprint(data: bytes) -> str:
 
 
 @contextmanager
-def named_temporary_file(
+def _named_temporary_file(
     tmp_dir: str | None = None, prefix: str | None = None
 ) -> Iterator[IO[bytes]]:
     # Work around Windows issue with auto-delete: https://bugs.python.org/issue14243
@@ -55,7 +57,7 @@ def _ensure_cache_dir() -> Path:
     gitignore = cache_dir / ".gitignore"
     if not gitignore.exists():
         cache_dir.mkdir(parents=True, exist_ok=True)
-        with named_temporary_file(tmp_dir=fspath(cache_dir), prefix=".gitignore.") as gitignore_fp:
+        with _named_temporary_file(tmp_dir=fspath(cache_dir), prefix=".gitignore.") as gitignore_fp:
             gitignore_fp.write(b"*\n")
             gitignore_fp.close()
             os.rename(gitignore_fp.name, gitignore)
@@ -63,13 +65,13 @@ def _ensure_cache_dir() -> Path:
 
 
 @dataclass(frozen=True)
-class VenvLayout:
+class _VenvLayout:
     python: str
     site_packages_dir: str
 
 
-def _create_venv(python: str, venv_dir: str) -> VenvLayout:
-    subprocess.run(
+def _create_venv(python: str, venv_dir: str) -> _VenvLayout:
+    result = subprocess.run(
         args=[
             "pex3",
             "venv",
@@ -81,8 +83,11 @@ def _create_venv(python: str, venv_dir: str) -> VenvLayout:
             "--dest-dir",
             venv_dir,
         ],
-        check=True,
+        capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        raise DevCmdError(result.stderr)
 
     result = subprocess.run(
         args=["pex3", "venv", "inspect", venv_dir],
@@ -94,7 +99,7 @@ def _create_venv(python: str, venv_dir: str) -> VenvLayout:
     python_exe = venv_data["interpreter"]["binary"]
     site_packages_dir = venv_data["site_packages"]
 
-    return VenvLayout(python=python_exe, site_packages_dir=site_packages_dir)
+    return _VenvLayout(python=python_exe, site_packages_dir=site_packages_dir)
 
 
 def marker_environment(python: str) -> dict[str, str]:
@@ -202,6 +207,18 @@ def _fingerprint_python_config(python: str, config: PythonConfig) -> str:
     )
 
 
+def _chmod_plus_x(path: str) -> None:
+    path_mode = os.stat(path).st_mode
+    path_mode &= 0o777
+    if path_mode & stat.S_IRUSR:
+        path_mode |= stat.S_IXUSR
+    if path_mode & stat.S_IRGRP:
+        path_mode |= stat.S_IXGRP
+    if path_mode & stat.S_IROTH:
+        path_mode |= stat.S_IXOTH
+    os.chmod(path, path_mode)
+
+
 def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) -> Venv:
     fingerprint = _fingerprint_python_config(python=python, config=config)
     venv_dir = _ensure_cache_dir() / "venvs" / fingerprint
@@ -214,7 +231,7 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                 )
                 work_dir = Path(f"{venv_dir}.work")
                 venv_layout = _create_venv(python, venv_dir=fspath(work_dir))
-                with named_temporary_file(
+                with _named_temporary_file(
                     tmp_dir=fspath(work_dir), prefix="3rdparty-reqs."
                 ) as reqs_fp:
                     reqs_fp.close()
@@ -257,7 +274,7 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                     @contextmanager
                     def _extra_requirements_args() -> Iterator[list[str]]:
                         if isinstance(config.extra_requirements, str):
-                            with named_temporary_file(
+                            with _named_temporary_file(
                                 tmp_dir=fspath(work_dir), prefix="extra-reqs."
                             ) as fp:
                                 fp.write(config.extra_requirements.encode())
@@ -313,6 +330,7 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                             )
                             shutil.copyfileobj(candidate_fp, rewrite_fp)
                     os.rename(rewrite_fp.name, candidate_console_script)
+                    _chmod_plus_x(candidate_console_script)
 
                 with (work_dir / layout_file.name).open("w") as out_fp:
                     json.dump(
