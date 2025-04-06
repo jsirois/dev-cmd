@@ -1,10 +1,14 @@
 # Release Notes
 
+## 0.23.1
+
+Fix regression in `when` handling for 1st defined `[[tool.dev-cmd.python]]`.
+
 ## 0.23.0
 
 This release re-works `--python` venv setup customization with breaking TOML schema changes. Please
 review https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons to learn about the new
-features and TOML structure changes under the `[tool.dev-cmd] python` key.
+features and TOML structure changes under the `[toolAlso provid.dev-cmd] python` key.
 
 ## 0.22.0
 

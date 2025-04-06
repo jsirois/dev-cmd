@@ -732,9 +732,9 @@ def _parse_pythons(
     for index, python_data in enumerate(
         _assert_list_dict_str_keys(python_config_data, path="[tool.dev-cmd] `python`")
     ):
+        when = _parse_when(python_data, table_path=f"[tool.dev-cmd] `python[{index}]`")
         if index == 0:
             defaults = _parse_python(0, python_data, pyproject_data)
-        when = _parse_when(python_data, table_path=f"[tool.dev-cmd] `python[{index}]`")
         if when and not when.evaluate(marker_environment):
             continue
         if activated_index is not None:
