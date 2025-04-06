@@ -214,7 +214,9 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                 )
                 work_dir = Path(f"{venv_dir}.work")
                 venv_layout = _create_venv(python, venv_dir=fspath(work_dir))
-                with named_temporary_file(prefix="dev-cmd-venv.") as reqs_fp:
+                with named_temporary_file(
+                    tmp_dir=fspath(work_dir), prefix="3rdparty-reqs."
+                ) as reqs_fp:
                     reqs_fp.close()
 
                     requirements_export_command_args = [
@@ -251,17 +253,27 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                     )
 
                 if config.extra_requirements:
-                    if isinstance(config.extra_requirements, str):
-                        extra_requirements_args = ["-r", config.extra_requirements]
-                    else:
-                        extra_requirements_args = list(config.extra_requirements)
-                    subprocess.run(
-                        args=[venv_layout.python, "-m", "pip", "install"]
-                        + list(config.extra_requirements_pip_install_opts)
-                        + extra_requirements_args,
-                        stdout=sys.stderr.fileno(),
-                        check=True,
-                    )
+
+                    @contextmanager
+                    def _extra_requirements_args() -> Iterator[list[str]]:
+                        if isinstance(config.extra_requirements, str):
+                            with named_temporary_file(
+                                tmp_dir=fspath(work_dir), prefix="extra-reqs."
+                            ) as fp:
+                                fp.write(config.extra_requirements.encode())
+                                fp.close()
+                                yield ["-r", fp.name]
+                        else:
+                            yield list(config.extra_requirements)
+
+                    with _extra_requirements_args() as extra_requirements_args:
+                        subprocess.run(
+                            args=[venv_layout.python, "-m", "pip", "install"]
+                            + list(config.extra_requirements_pip_install_opts)
+                            + extra_requirements_args,
+                            stdout=sys.stderr.fileno(),
+                            check=True,
+                        )
 
                 if config.finalize_command:
                     finalize_command_args: list[str] = []

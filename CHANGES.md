@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.23.3
+
+Fix `[[tool.dev-cmd.python]] extra-requirements` handling of string values (requirements.txt style
+value).
+
 ## 0.23.2
 
 Fix `[[tool.dev-cmd.python]] pyproject-cache-keys` inheritance handling.
