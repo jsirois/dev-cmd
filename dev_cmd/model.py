@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePath
-from typing import Any, Container, Iterable, Mapping, MutableMapping
+from typing import Any, Container, Mapping, MutableMapping
 
 from packaging.markers import Marker
 
@@ -75,39 +75,32 @@ class ExitStyle(Enum):
 
 
 @dataclass(frozen=True)
-class ExtraRequirements:
-    @classmethod
-    def create(
-        cls,
-        reqs: Iterable[str] | None = None,
-        pip_req: str | None = None,
-        install_opts: Iterable[str] | None = None,
-    ) -> ExtraRequirements:
-        return cls(
-            reqs=tuple(reqs or ["-e", "."]),
-            pip_req=pip_req or "pip",
-            install_opts=tuple(install_opts) if install_opts else (),
-        )
-
-    reqs: tuple[str, ...]
-    pip_req: str
-    install_opts: tuple[str, ...]
+class CacheKeyInputs:
+    pyproject_data: Mapping[str, Any]
+    envs: Mapping[str, str | None]
+    paths: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class PythonConfig:
-    input_data: bytes
-    input_files: tuple[str, ...]
-    requirements_export_command: tuple[str, ...]
-    extra_requirements: ExtraRequirements
+    cache_key_inputs: CacheKeyInputs
+    thirdparty_export_command: Command
+    thirdparty_pip_install_opts: tuple[str, ...]
+    pip_requirement: str
+    extra_requirements: tuple[str, ...] | str
+    extra_requirements_pip_install_opts: tuple[str, ...]
+    finalize_command: Command | None
 
 
 @dataclass(frozen=True)
 class Venv:
     dir: str
     python: str
-    bin_path: str
     marker_environment: Mapping[str, str]
+
+    @property
+    def bin_path(self) -> str:
+        return os.path.dirname(self.python)
 
     def update_path(self, env: MutableMapping[str, str]) -> None:
         path = env.pop("PATH", None)

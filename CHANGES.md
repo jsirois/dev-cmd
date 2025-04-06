@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.23.0
+
+This release re-works `--python` venv setup customization with breaking TOML schema changes. Please
+review https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons to learn about the new
+features and TOML structure changes under the `[tool.dev-cmd] python` key.
+
 ## 0.22.0
 
 Add support for per-`--python` venv setup customization. This allows for vagaries in older Pythons

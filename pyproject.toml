@@ -137,7 +137,13 @@ steps = [["check-fmt", "check-lint", "type-check", "test"]]
 default = "checks"
 exit-style = "immediate"
 
-[tool.dev-cmd.python.requirements]
-input-keys = []
-input-files = ["uv.lock"]
-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+[[tool.dev-cmd.python]]
+# Suppress pyproject cache keys since uv.lock and a few env vars are enough to uniquely determine
+# venv content.
+pyproject-cache-keys = []
+extra-cache-keys = [
+    {env = "DEV_CMD_UV_FORCE_BUILD"},
+    "uv.lock",
+]
+
+3rdparty-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]

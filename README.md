@@ -334,8 +334,8 @@ e.g.: a requirement string like `"dev-cmd[old-pythons]"`.
 
 With that done, a minimal configuration looks like so:
 ```toml
-[tool.dev-cmd.python.requirements]
-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+[[tool.dev-cmd.python]]
+3rdparty-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
 ```
 
 Here your export command just needs to be able to output a Pip requirements.txt compatible
@@ -346,8 +346,8 @@ By default, `dev-cmd` also installs your project in each custom venv in editable
 requirement. You may wish to adjust which extra requirements are installed, in which case you use
 the `extra-requirements` key:
 ```toml
-[tool.dev-cmd.python.requirements]
-export-command = [
+[[tool.dev-cmd.python]]
+3rdparty-export-command = [
    "uv", "export", "-q",
    "--no-emit-project",
    "--no-emit-package", "subproject",
@@ -362,33 +362,55 @@ extra-requirements = [
 Here we exclude the main project and a local subproject from the requirements export since `uv`
 exports hashes for these which Pip does not support for directories. To work around, we just list
 these two local projects in `extra-requirements` and they get installed as-is without a hash check
-after the exported requirements are installed.
+after the exported requirements are installed. You can alternatively supply `extra-requirements` as
+a single string, in which case the string will be written out to a file and passed to `pip install`
+as a `-r` / `--requirement` file.
+
+You can also supply a `finalize-command` as a list of command line argument strings for the venv.
+This command will run last after the 3rdparty requirements and extra requirements are installed and
+can use `{venv-python}` and `{venv-site-packages}` placeholders to receive these paths for
+manipulating the venv.
 
 You may find the need to vary venv setup per Python `--version`. This is supported by specifying
-`extra-requirements` as a list of tables instead of a list of requirement strings. For example:
+multiple `[[tool.dev-cmd.python]]` entries. For example:
 ```toml
-[[tool.dev-cmd.python.requirements.extra-requirements]]
+[[tool.dev-cmd.python]]
+when = "python_version >= '3.7'"
+3rdparty-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+
+[[tool.dev-cmd.python]]
 when = "python_version < '3.7'"
-pip-req = "pip<23"
-install-opts = ["--no-use-pep517"]
-reqs = ["-e", "./"]
+
+pip-requirement = "pip<10"
+extra-requirements = ["."]
+extra-requirements-pip-install-opts = ["--no-use-pep517"]
 ```
 
-You must ensure just one `extra-requirements` entry is selected per `--python` via a `when`
-environment marker. You can then customise the version of Pip selected for the venv via `pip-req`,
-the extra `reqs` to install and any custom `pip install` options you need.
+You must ensure just one `[[tool.dev-cmd.python]]` entry is selected per `--python` via a `when`
+environment marker. You can then customize the version of Pip selected for the venv via
+`pip-requirement`, the extra `extra-requirements` to install and any custom `pip install` options
+you need for either the 3rdparty requirements install via `3rdparty-pip-install-opts` or the extra
+requirements install via `extra-requirements-pip-install-opts`.
+
+Note that when defining multiple `[[tool.dev-cmd.python]]` entries, the 1st is special in setting
+defaults all subsequent `[[tool.dev-cmd.python]]` entries inherit for keys left unspecified. In the
+example above, the second entry for Python 3.6 and older could add a `3rdparty-export-command` if
+it needed different export behavior for those older versions.
 
 Venvs are created under a `.dev-cmd` directory and are cached based on the values of the
 "build-system", "project" and "project.optional-dependencies" in `pyproject.toml` by default. To
-change the default input keys, you can specify `input-keys`. You can also mix the full contents of
-any other files into the venv cache key using `input-files`. Here, combining both of these options,
-we turn off pyproject.toml inputs to the venv cache key and just rely on the contents of `uv.lock`,
-which is what the export command is powered by:
+change this default, you can specify a custom `pyproject-cache-keys`. You can also mix the full
+contents of any other files, directories or environment variables into the venv cache key using
+`extra-cache-keys`. For files or directories, add a string entry denoting their path or else an
+entry like `{path = "the/path"}`. For environment variables, add an entry like
+`{env = "THE_ENV_VAR"}`. Here, combining both of these options, we turn off pyproject.toml inputs to
+the venv cache key and just rely on the contents of `uv.lock`, which is what the export command is
+powered by:
 ```toml
 [tool.dev-cmd.python.requirements]
 export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
-input-keys = []
-input-files = ["uv.lock"]
+pyproject-cache-keys = []
+extra-cache-keys = ["uv.lock"]
 ```
 
 ## Execution

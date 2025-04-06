@@ -44,6 +44,8 @@ def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePa
     monkeypatch.setenv("UV_LINK_MODE", "copy")
     monkeypatch.delenv("VIRTUAL_ENV")
 
+    dev_cmd_with_old_pythons_req = f"dev-cmd[old-pythons] @ file://{project_dir.as_posix()}"
+
     pyproject_toml_file = tmp_path / "pyproject.toml"
     pyproject_toml_file.write_text(
         dedent(
@@ -56,27 +58,22 @@ def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePa
             [dependency-groups]
             dev = [
                 "ansicolors",
-                "dev-cmd[old-pythons] @ {project_dir.as_posix()}",
+                "{dev_cmd_with_old_pythons_req}",
                 "ruff",
             ]
 
-            [tool.dev-cmd.python.requirements]
+            [[tool.dev-cmd.python]]
             # Let all the test cases share the same cache keys since requirements are hard coded
             # here and the tests only append commands and tasks.
-            input-keys = []
-            input-files = []
+            pyproject-cache-keys = []
 
-            export-command = [
-                "uv",
-                "export",
-                "-q",
+            3rdparty-export-command = [
+                "uv", "export", "-q",
                 "--no-emit-project",
-                "--no-emit-package",
-                "dev-cmd",
-                "-o",
-                "{{requirements.txt}}",
+                "--no-emit-package", "dev-cmd",
+                "-o", "{{requirements.txt}}",
             ]
-            extra-requirements = ["dev-cmd[old-pythons] @ file://{project_dir.as_posix()}"]
+            extra-requirements = ["{dev_cmd_with_old_pythons_req}"]
             """
         )
     )

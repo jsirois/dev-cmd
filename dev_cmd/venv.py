@@ -17,10 +17,10 @@ from os import fspath
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from textwrap import dedent
-from typing import IO, Dict, Iterator, cast
+from typing import IO, Any, Dict, Iterator, cast
 
 from dev_cmd import color
-from dev_cmd.model import PythonConfig, Venv
+from dev_cmd.model import Command, PythonConfig, Venv
 
 AVAILABLE = False
 
@@ -65,7 +65,7 @@ def _ensure_cache_dir() -> Path:
 @dataclass(frozen=True)
 class VenvLayout:
     python: str
-    bin_path: str
+    site_packages_dir: str
 
 
 def _create_venv(python: str, venv_dir: str) -> VenvLayout:
@@ -92,9 +92,9 @@ def _create_venv(python: str, venv_dir: str) -> VenvLayout:
     )
     venv_data = json.loads(result.stdout)
     python_exe = venv_data["interpreter"]["binary"]
-    script_dir = venv_data["script_dir"]
+    site_packages_dir = venv_data["site_packages"]
 
-    return VenvLayout(python=python_exe, bin_path=script_dir)
+    return VenvLayout(python=python_exe, site_packages_dir=site_packages_dir)
 
 
 def marker_environment(python: str) -> dict[str, str]:
@@ -139,20 +139,71 @@ def marker_environment(python: str) -> dict[str, str]:
     return cast(Dict[str, str], json.loads(markers_file.read_bytes()))
 
 
-def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) -> Venv:
-    fingerprint = _fingerprint(
+def _fingerprint_python_config(python: str, config: PythonConfig) -> str:
+    input_files = {}
+    input_paths: dict[str, str] = {}
+    for path in config.cache_key_inputs.paths:
+        input_path = Path(path)
+        if input_path.is_file():
+            input_files[input_path] = ""
+        else:
+            assert input_path.is_dir(), (
+                f"Expected parsing code to verify {input_path} was an existing file or directory."
+            )
+            for root, dirs, files in os.walk(input_path):
+                root_dir = Path(root)
+                input_paths.update(((root_dir / d).as_posix(), "") for d in dirs)
+                input_files.update((root_dir / f, "") for f in files)
+
+    if input_files:
+        input_paths.update(
+            zip(
+                map(lambda f: f.as_posix(), input_files),
+                # TODO(John Sirois): Investigate ThreadPool().map(..., chunk_size=?) ~# of files
+                #  threshold where performance improves A quick experiment on SSD showed a thread
+                #  pool to be slower for <100 files.
+                map(lambda f: _fingerprint(f.read_bytes()), input_files),
+            )
+        )
+
+    def extract_command_fingerprint_data(command: Command | None) -> dict[str, Any] | None:
+        if command is None:
+            return None
+        return {
+            "extra-env": dict(command.extra_env),
+            "args": command.args,
+            "cwd": str(command.cwd) if command.cwd else None,
+        }
+
+    return _fingerprint(
         json.dumps(
             {
                 "python": python,
-                "input-data": _fingerprint(config.input_data),
-                "input-files": {
-                    input_file: _fingerprint(Path(input_file).read_bytes())
-                    for input_file in config.input_files
+                "cache-keys": {
+                    "pyproject-data": config.cache_key_inputs.pyproject_data,
+                    "paths": input_paths,
+                    "env": config.cache_key_inputs.envs,
                 },
+                "pip-requirement": config.pip_requirement,
+                "3rdparty-export-command": extract_command_fingerprint_data(
+                    config.thirdparty_export_command
+                ),
+                "3rdparty-pip-install-opts": config.thirdparty_pip_install_opts,
+                "extra-requirements": (
+                    _fingerprint(config.extra_requirements.encode())
+                    if isinstance(config.extra_requirements, str)
+                    else config.extra_requirements
+                ),
+                "extra-requirements-pip-install-opts": config.extra_requirements_pip_install_opts,
+                "finalize-command": extract_command_fingerprint_data(config.finalize_command),
             },
             sort_keys=True,
         ).encode()
     )
+
+
+def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) -> Venv:
+    fingerprint = _fingerprint_python_config(python=python, config=config)
     venv_dir = _ensure_cache_dir() / "venvs" / fingerprint
     layout_file = venv_dir / ".dev-cmd-venv-layout.json"
     if not os.path.exists(venv_dir):
@@ -165,11 +216,20 @@ def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) ->
                 venv_layout = _create_venv(python, venv_dir=fspath(work_dir))
                 with named_temporary_file(prefix="dev-cmd-venv.") as reqs_fp:
                     reqs_fp.close()
-                    requirements_export_command = [
+
+                    requirements_export_command_args = [
                         (reqs_fp.name if arg == "{requirements.txt}" else arg)
-                        for arg in config.requirements_export_command
+                        for arg in config.thirdparty_export_command.args
                     ]
-                    subprocess.run(args=requirements_export_command, check=True)
+                    env = os.environ.copy()
+                    env.update(config.thirdparty_export_command.extra_env)
+                    subprocess.run(
+                        args=requirements_export_command_args,
+                        cwd=config.thirdparty_export_command.cwd,
+                        env=env,
+                        check=True,
+                    )
+
                     subprocess.run(
                         args=[
                             venv_layout.python,
@@ -177,30 +237,54 @@ def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) ->
                             "pip",
                             "install",
                             "-U",
-                            config.extra_requirements.pip_req,
+                            config.pip_requirement,
                         ],
                         stdout=sys.stderr.fileno(),
                         check=True,
                     )
                     subprocess.run(
-                        args=[venv_layout.python, "-m", "pip", "install", "-r", reqs_fp.name],
+                        args=[venv_layout.python, "-m", "pip", "install"]
+                        + list(config.thirdparty_pip_install_opts)
+                        + ["-r", reqs_fp.name],
                         stdout=sys.stderr.fileno(),
                         check=True,
                     )
 
-                subprocess.run(
-                    args=[venv_layout.python, "-m", "pip", "install"]
-                    + list(config.extra_requirements.install_opts)
-                    + list(config.extra_requirements.reqs),
-                    stdout=sys.stderr.fileno(),
-                    check=True,
-                )
+                if config.extra_requirements:
+                    if isinstance(config.extra_requirements, str):
+                        extra_requirements_args = ["-r", config.extra_requirements]
+                    else:
+                        extra_requirements_args = list(config.extra_requirements)
+                    subprocess.run(
+                        args=[venv_layout.python, "-m", "pip", "install"]
+                        + list(config.extra_requirements_pip_install_opts)
+                        + extra_requirements_args,
+                        stdout=sys.stderr.fileno(),
+                        check=True,
+                    )
+
+                if config.finalize_command:
+                    finalize_command_args: list[str] = []
+                    for arg in config.finalize_command.args:
+                        if arg == "{venv-python}":
+                            finalize_command_args.append(venv_layout.python)
+                        elif arg == "{venv-site-packages}":
+                            finalize_command_args.append(venv_layout.site_packages_dir)
+                        else:
+                            finalize_command_args.append(arg)
+                    env = os.environ.copy()
+                    env.update(config.finalize_command.extra_env)
+                    subprocess.run(
+                        args=finalize_command_args,
+                        cwd=config.finalize_command.cwd,
+                        env=env,
+                        check=True,
+                    )
 
                 with (work_dir / layout_file.name).open("w") as out_fp:
                     json.dump(
                         {
                             "python": venv_layout.python.replace(str(work_dir), str(venv_dir)),
-                            "bin-path": venv_layout.bin_path.replace(str(work_dir), str(venv_dir)),
                             "marker-environment": marker_environment(python),
                         },
                         out_fp,
@@ -210,11 +294,13 @@ def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) ->
     with layout_file.open() as in_fp:
         data = json.load(in_fp)
 
+    print(
+        color.color(f"Using venv at {venv_dir} for --python {python}.", fg="gray"), file=sys.stderr
+    )
     try:
         return Venv(
             dir=venv_dir.as_posix(),
             python=data["python"],
-            bin_path=data["bin-path"],
             marker_environment=data["marker-environment"],
         )
     except KeyError:
@@ -225,4 +311,4 @@ def ensure(config: PythonConfig, python: str, rebuild_if_needed: bool = True) ->
             file=sys.stderr,
         )
         shutil.rmtree(venv_dir)
-        return ensure(config, python, rebuild_if_needed=False)
+        return ensure(python=python, config=config, rebuild_if_needed=False)
