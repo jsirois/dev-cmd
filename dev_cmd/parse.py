@@ -102,6 +102,7 @@ def _parse_commands(
             hidden = False
             description = None
             when = None
+            python = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
 
@@ -186,6 +187,13 @@ def _parse_commands(
 
             when = _parse_when(command, table_path=f"[tool.dev-cmd.commands.{name}]")
 
+            python = command.pop("python", None)
+            if python and not isinstance(python, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `python` value must be a string, "
+                    f"given: {python} of type {type(python)}."
+                )
+
             if data:
                 raise InvalidModelError(
                     f"Unexpected configuration keys in the [tool.dev-cmd.commands.{name}] table: "
@@ -263,6 +271,7 @@ def _parse_commands(
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                     when=when,
+                    python=python,
                 )
 
             if not when or when.evaluate(marker_environment):
@@ -288,6 +297,7 @@ def _parse_commands(
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                     when=when,
+                    python=python,
                 )
 
 
@@ -505,7 +515,7 @@ def _parse_python(
     python_config_data: dict[str, Any],
     pyproject_data: dict[str, Any],
     defaults: PythonConfig | None = None,
-) -> PythonConfig | None:
+) -> PythonConfig:
     export_command_data = python_config_data.pop("3rdparty-export-command", None)
     if export_command_data is None and defaults is None:
         raise InvalidModelError(
@@ -526,6 +536,8 @@ def _parse_python(
         # MyPy can't follow the guard logic above.
         else cast(PythonConfig, defaults).thirdparty_export_command
     )
+
+    when = _parse_when(python_config_data, table_path=f"[tool.dev-cmd] `python[{index}]`")
 
     pip_requirement = defaults.pip_requirement if defaults else "pip"
     pip_requirement_data = python_config_data.pop("pip-requirement", None)
@@ -703,6 +715,7 @@ def _parse_python(
     )
 
     return PythonConfig(
+        when=when,
         cache_key_inputs=cache_key_inputs,
         thirdparty_export_command=thirdparty_export_command,
         thirdparty_pip_install_opts=thirdparty_pip_install_opts,
@@ -713,30 +726,12 @@ def _parse_python(
     )
 
 
-def _parse_pythons(
-    python: str | None, python_config_data: Any, pyproject_data: dict[str, Any]
-) -> Venv | None:
-    if python is None:
-        return None
-
-    if not python_config_data:
-        raise InvalidArgumentError(
-            f"You requested a custom Python of {python} but have not configured any "
-            f"`[[tool.dev-cmd.python]]` entries.\n"
-            f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
-        )
-
+def select_python_config(python: str, pythons: Iterable[PythonConfig]) -> PythonConfig | None:
     marker_environment = venv.marker_environment(python)
     activated_index: int | None = None
-    defaults: PythonConfig | None = None
-    python_config: PythonConfig | None = None
-    for index, python_data in enumerate(
-        _assert_list_dict_str_keys(python_config_data, path="[tool.dev-cmd] `python`")
-    ):
-        when = _parse_when(python_data, table_path=f"[tool.dev-cmd] `python[{index}]`")
-        if index == 0:
-            defaults = _parse_python(0, python_data, pyproject_data)
-        if when and not when.evaluate(marker_environment):
+    activated_python_config: PythonConfig | None = None
+    for index, python_config in enumerate(pythons):
+        if python_config.when and not python_config.when.evaluate(marker_environment):
             continue
         if activated_index is not None:
             raise InvalidModelError(
@@ -745,14 +740,48 @@ def _parse_pythons(
                 f"You can define multiple [tool.dev-cmd] `python` tables, but you must ensure that "
                 f"they all define mutually exclusive `when` marker expressions."
             )
-        python_config = (
-            defaults
+        activated_python_config = python_config
+        activated_index = index
+    return activated_python_config
+
+
+def _parse_pythons(
+    python: str | None, python_config_data: Any, pyproject_data: dict[str, Any]
+) -> tuple[Venv | None, tuple[PythonConfig, ...]]:
+    if python and not python_config_data:
+        raise InvalidArgumentError(
+            f"You requested a custom Python of {python} but have not configured any "
+            f"`[[tool.dev-cmd.python]]` entries.\n"
+            f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons"
+        )
+    if not python_config_data:
+        return None, ()
+
+    pythons: list[PythonConfig] = []
+    defaults: PythonConfig | None = None
+    for index, python_data in enumerate(
+        _assert_list_dict_str_keys(python_config_data, path="[tool.dev-cmd] `python`")
+    ):
+        if index == 0:
+            defaults = _parse_python(0, python_data, pyproject_data)
+        pythons.append(
+            # MyPy fails to track the logic here and conclude defaults can't be None.
+            cast(PythonConfig, defaults)
             if index == 0
             else _parse_python(index, python_data, pyproject_data, defaults=defaults)
         )
-        activated_index = index
 
-    return venv.ensure(python=python, config=python_config) if python_config else None
+    activated_venv: Venv | None = None
+    if python:
+        activated_python_config = select_python_config(python, pythons)
+        if not activated_python_config:
+            raise InvalidArgumentError(
+                f"You requested a custom Python of {python} but none of the configured "
+                f"`[[tool.dev-cmd.python]]` entries apply."
+            )
+        activated_venv = venv.ensure(python=python, config=activated_python_config)
+
+    return activated_venv, tuple(pythons)
 
 
 def _iter_all_required_step_names(
@@ -798,7 +827,7 @@ def parse_dev_config(
         )
 
     marker_environment: dict[str, str] | None = None
-    python_venv = _parse_pythons(
+    python_venv, pythons = _parse_pythons(
         python=requested_python,
         python_config_data=dev_cmd_data.pop("python", None),
         pyproject_data=pyproject_data,
@@ -870,5 +899,6 @@ def parse_dev_config(
         exit_style=exit_style,
         grace_period=grace_period,
         venv=python_venv,
+        pythons=pythons,
         source=pyproject_toml.path,
     )

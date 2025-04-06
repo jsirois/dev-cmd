@@ -12,7 +12,7 @@ from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Container
+from typing import Any, AsyncIterator, Container, Mapping
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
@@ -81,6 +81,7 @@ class Invocation:
             grace_period=grace_period,
             timings=timings,
             venv=venv,
+            venvs={},
             console=console,
         )
 
@@ -90,6 +91,7 @@ class Invocation:
     grace_period: float
     timings: bool
     venv: Venv | None
+    venvs: Mapping[str, Venv]
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
 
@@ -166,6 +168,11 @@ class Invocation:
                     process.kill()
                     await process.wait()
 
+    def _python_for_command(self, command: Command) -> str:
+        if command.python:
+            return self.venvs[command.python].python
+        return self.venv.python if self.venv else sys.executable
+
     async def _invoke_command(
         self, command: Command, *extra_args, **subprocess_kwargs: Any
     ) -> Process | ExecutionError:
@@ -183,13 +190,15 @@ class Invocation:
         env.update(command.extra_env)
         if USE_COLOR and not any(color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR")):
             env.setdefault("FORCE_COLOR", "1")
-        if self.venv:
+        if command.python:
+            self.venvs[command.python].update_path(env)
+        elif self.venv:
             self.venv.update_path(env)
 
         if args[0].endswith(".py"):
-            args.insert(0, self.venv.python if self.venv else sys.executable)
+            args.insert(0, self._python_for_command(command))
         elif "python" == args[0]:
-            args[0] = self.venv.python if self.venv else sys.executable
+            args[0] = self._python_for_command(command)
 
         process = await asyncio.create_subprocess_exec(
             args[0],

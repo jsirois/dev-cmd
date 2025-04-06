@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import itertools
 import os
 import shlex
@@ -11,22 +12,76 @@ import sys
 import time
 from argparse import ArgumentParser
 from asyncio import CancelledError
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Collection, Iterable
+from typing import Any, Collection, DefaultDict, Iterable, Iterator, Mapping
 
-from dev_cmd import __version__, color, venv
+from dev_cmd import __version__, color, parse, venv
 from dev_cmd.color import ColorChoice
 from dev_cmd.console import Console
 from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
 from dev_cmd.expansion import expand
 from dev_cmd.invoke import Invocation
-from dev_cmd.model import Configuration, ExitStyle
+from dev_cmd.model import Command, Configuration, ExitStyle, Group, PythonConfig, Task, Venv
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import find_pyproject_toml
 
 DEFAULT_EXIT_STYLE = ExitStyle.AFTER_STEP
 DEFAULT_GRACE_PERIOD = 5.0
+
+
+def _iter_commands(
+    steps: Iterable[Command | Group | Task], seen: set[Command] | None = None
+) -> Iterator[Command]:
+    seen = seen if seen is not None else set()
+    for step in steps:
+        if isinstance(step, Command):
+            if step not in seen:
+                seen.add(step)
+                yield step
+        elif isinstance(step, Task):
+            for command in _iter_commands(step.steps.members, seen=seen):
+                yield command
+        else:
+            for command in _iter_commands(step.members, seen=seen):
+                yield command
+
+
+def _ensure_venvs(
+    steps: Iterable[Command | Task], pythons: Iterable[PythonConfig]
+) -> Mapping[str, Venv]:
+    pythons_to_requesting_commands: DefaultDict[str, list[Command]] = defaultdict(list)
+    for command in _iter_commands(steps):
+        if command.python:
+            pythons_to_requesting_commands[command.python].append(command)
+
+    if pythons_to_requesting_commands and not pythons:
+        missing_pythons = "\n".join(
+            f"+ {python!r} requested by: {' '.join(repr(rc.name) for rc in requesting_commands)}"
+            for python, requesting_commands in pythons_to_requesting_commands.items()
+        )
+        raise InvalidArgumentError(
+            f"Some of your configured commands requested custom pythons but you have not "
+            f"configured any `[[tool.dev-cmd.python]]` entries.\n"
+            f"See: https://github.com/jsirois/dev-cmd/blob/main/README.md#custom-pythons\n"
+            f"\n"
+            f"The missing pythons are:\n"
+            f"{missing_pythons}"
+        )
+
+    venvs_by_python: dict[str, Venv] = {}
+    for python, requesting_commands in pythons_to_requesting_commands.items():
+        python_config = parse.select_python_config(python, pythons)
+        if not python_config:
+            commands = "\n".join(f"+ {rc.name}" for rc in requesting_commands)
+            raise InvalidArgumentError(
+                f"The following commands requested a custom Python of {python!r} but none of the "
+                f"configured `[[tool.dev-cmd.python]]` entries apply:\n"
+                f"{commands}"
+            )
+        venvs_by_python[python] = venv.ensure(python, python_config)
+    return venvs_by_python
 
 
 def _run(
@@ -105,6 +160,10 @@ def _run(
             f"The following extra args were passed but none of the selected commands accept extra "
             f"arguments: {shlex.join(extra_args)}"
         )
+
+    invocation = dataclasses.replace(
+        invocation, venvs=_ensure_venvs(invocation.steps, config.pythons)
+    )
 
     exit_style = exit_style_override or config.exit_style or DEFAULT_EXIT_STYLE
     return asyncio.run(

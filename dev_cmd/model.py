@@ -35,6 +35,7 @@ class Command:
     description: str | None = None
     factor_descriptions: tuple[FactorDescription, ...] = ()
     when: Marker | None = None
+    python: str | None = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ class CacheKeyInputs:
 
 @dataclass(frozen=True)
 class PythonConfig:
+    when: Marker | None
     cache_key_inputs: CacheKeyInputs
     thirdparty_export_command: Command
     thirdparty_pip_install_opts: tuple[str, ...]
@@ -115,4 +117,5 @@ class Configuration:
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
     venv: Venv | None = None
+    pythons: tuple[PythonConfig, ...] = ()
     source: Any = "<code>"

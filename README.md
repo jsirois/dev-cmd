@@ -27,10 +27,11 @@ greet = ["python", "-c", "import os; print(f'Hello from {os.getcwd()!r}.')"]
 More on execution in various environments [below](#Execution), but you can run the greet command
 with, for example `uv run dev-cmd greet`.
 
-There are two special argv0's you can use in your commands:
-1. "python": This will be mapped to the Python interpreter that is executing `dev-cmd`.
-2. A file name ending in ".py": This will be assumed to be a python script, and it will be run using
-   the Python interpreter that is executing `dev-cmd`.
+There are two special argv0's you can use in your command arguments list:
+1. "python": This will be mapped to the Python interpreter specified for the command (described
+   below) or else the Python interpreter executing `dev-cmd`.
+2. A file name ending in ".py": This will be assumed to be a python script, and executed with a
+   Python interpreter as described in 1 above.
 
 You can define as many commands as you want. They will all run from the project root directory (the
 directory containing the `pyproject.toml` the commands are defined in) and accept no arguments
@@ -39,13 +40,17 @@ in a table instead of as a list of command line arguments. For example:
 
 ```toml
 [tool.dev-cmd.commands.test]
+python = "python3.9"
 args = ["pytest"]
 env = {"PYTHONPATH" = "../test-support"}
 cwd = "tests"
 accepts-extra-args = true
 ```
 
-Here, the working directory is set to the `tests/` directory (which must exist) and the `PYTHONPATH`
+Here, the test command will be run with `python3.9` regardless of the interpreter running `dev-cmd`.
+This relies on configuration for custom interpreters described [below](#Custom-Pythons).
+
+Also, the working directory is set to the `tests/` directory (which must exist) and the `PYTHONPATH`
 is set to its sibling `test-support` directory. This allows for importable shared test code to be
 placed under the `test-support` directory in a project laid out like so:
 ```

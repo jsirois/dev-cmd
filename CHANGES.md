@@ -1,5 +1,15 @@
 # Release Notes
 
+## 0.24.0
+
+This release adds support for setting a custom `python` per-command. This `python` works just like
+the global `--python` option, but scoped to an individual command and trumping all other
+configuration. If a command says it needs `python = "python3.9"` then it will always run under
+`python3.9`.
+
+Also, the error output is improved when the requested `--python` can't be found and console script
+shebangs in `--python` venvs are fixed to point to the correct interpreter allowing direct use.
+
 ## 0.23.3
 
 Fix `[[tool.dev-cmd.python]] extra-requirements` handling of string values (requirements.txt style
