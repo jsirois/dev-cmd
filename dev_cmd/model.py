@@ -29,7 +29,13 @@ class Python:
     spec: str
 
     def resolve(self) -> str:
-        return re.sub(r"^\d(\.\d{1,2})?$", r"python\g<0>", self.spec)
+        def _expand(match: re.Match[str]) -> str:
+            version = match[0]
+            if len(version) > 1 and "." not in version:
+                version = f"{version[0]}.{version[1:]}"
+            return f"python{version}"
+
+        return re.sub(r"^(\d{1,3}|\d\.\d{1,2})$", _expand, self.spec)
 
     def __str__(self) -> str:
         return self.spec

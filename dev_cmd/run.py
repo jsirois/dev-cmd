@@ -247,7 +247,9 @@ def _parse_args() -> Options:
                 "the exact CPython or PyPy binary to use or just the binary name; e.g.: pypy3.10,"
                 "in which case the interpreter will be looked up on the PATH. You can omit the "
                 "python prefix for a PATH search and it will be filled in; i.e.: 3.12 will be "
-                "expanded to python3.12 and then looked up on the PATH."
+                "expanded to python3.12 and then looked up on the PATH. Finally, you can even omit "
+                "the dot in the version; i.e. 38 will expand to python3.8 and then looked up on "
+                "the PATH."
             ),
         )
 

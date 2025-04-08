@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.26.0
+
+The `--py` / `--python` and command "python" now all accet version number abbreviations without the
+dot. For example, to specify Python 3.8 you can now say any of `--py python3.8`, `--py 3.8` or
+`--py 38`.
+
 ## 0.25.0
 
 This release adds support for `--python` and command "python" abbreviations. In addition to
