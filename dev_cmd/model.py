@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePath
@@ -24,6 +25,17 @@ class FactorDescription:
 
 
 @dataclass(frozen=True)
+class Python:
+    spec: str
+
+    def resolve(self) -> str:
+        return re.sub(r"^\d(\.\d{1,2})?$", r"python\g<0>", self.spec)
+
+    def __str__(self) -> str:
+        return self.spec
+
+
+@dataclass(frozen=True)
 class Command:
     name: str
     args: tuple[str, ...]
@@ -35,7 +47,7 @@ class Command:
     description: str | None = None
     factor_descriptions: tuple[FactorDescription, ...] = ()
     when: Marker | None = None
-    python: str | None = None
+    python: Python | None = None
 
 
 @dataclass(frozen=True)

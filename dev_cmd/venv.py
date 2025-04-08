@@ -22,7 +22,7 @@ from typing import IO, Any, Dict, Iterator, cast
 
 from dev_cmd import color
 from dev_cmd.errors import DevCmdError
-from dev_cmd.model import Command, PythonConfig, Venv
+from dev_cmd.model import Command, Python, PythonConfig, Venv
 
 AVAILABLE = False
 
@@ -102,8 +102,9 @@ def _create_venv(python: str, venv_dir: str) -> _VenvLayout:
     return _VenvLayout(python=python_exe, site_packages_dir=site_packages_dir)
 
 
-def marker_environment(python: str) -> dict[str, str]:
-    fingerprint = _fingerprint(python.encode())
+def marker_environment(python: Python) -> dict[str, str]:
+    resolved_python = python.resolve()
+    fingerprint = _fingerprint(resolved_python.encode())
     markers_file = _ensure_cache_dir() / "interpreters" / f"markers.{fingerprint}.json"
     if not os.path.exists(markers_file):
         with FileLock(f"{markers_file}.lck"), TemporaryDirectory(
@@ -113,7 +114,7 @@ def marker_environment(python: str) -> dict[str, str]:
                 f"{color.yellow(f'Calculating environment markers for --python {python}')}...",
                 file=sys.stderr,
             )
-            venv_layout = _create_venv(python, fspath(td))
+            venv_layout = _create_venv(resolved_python, fspath(td))
             subprocess.run(
                 args=[venv_layout.python, "-m", "pip", "install", "packaging"],
                 stdout=sys.stderr.fileno(),
@@ -144,7 +145,7 @@ def marker_environment(python: str) -> dict[str, str]:
     return cast(Dict[str, str], json.loads(markers_file.read_bytes()))
 
 
-def _fingerprint_python_config(python: str, config: PythonConfig) -> str:
+def _fingerprint_python_config(python: Python, config: PythonConfig) -> str:
     input_files = {}
     input_paths: dict[str, str] = {}
     for path in config.cache_key_inputs.paths:
@@ -183,7 +184,7 @@ def _fingerprint_python_config(python: str, config: PythonConfig) -> str:
     return _fingerprint(
         json.dumps(
             {
-                "python": python,
+                "python": python.resolve(),
                 "cache-keys": {
                     "pyproject-data": config.cache_key_inputs.pyproject_data,
                     "paths": input_paths,
@@ -207,8 +208,8 @@ def _fingerprint_python_config(python: str, config: PythonConfig) -> str:
     )
 
 
-def _chmod_plus_x(path: str) -> None:
-    path_mode = os.stat(path).st_mode
+def _chmod_plus_x(path: Path) -> None:
+    path_mode = path.stat().st_mode
     path_mode &= 0o777
     if path_mode & stat.S_IRUSR:
         path_mode |= stat.S_IXUSR
@@ -216,10 +217,10 @@ def _chmod_plus_x(path: str) -> None:
         path_mode |= stat.S_IXGRP
     if path_mode & stat.S_IROTH:
         path_mode |= stat.S_IXOTH
-    os.chmod(path, path_mode)
+    path.chmod(path_mode)
 
 
-def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) -> Venv:
+def ensure(python: Python, config: PythonConfig, rebuild_if_needed: bool = True) -> Venv:
     fingerprint = _fingerprint_python_config(python=python, config=config)
     venv_dir = _ensure_cache_dir() / "venvs" / fingerprint
     layout_file = venv_dir / ".dev-cmd-venv-layout.json"
@@ -230,7 +231,7 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                     f"{color.yellow(f'Setting up venv for --python {python}')}...", file=sys.stderr
                 )
                 work_dir = Path(f"{venv_dir}.work")
-                venv_layout = _create_venv(python, venv_dir=fspath(work_dir))
+                venv_layout = _create_venv(python.resolve(), venv_dir=fspath(work_dir))
                 with _named_temporary_file(
                     tmp_dir=fspath(work_dir), prefix="3rdparty-reqs."
                 ) as reqs_fp:
@@ -310,26 +311,31 @@ def ensure(python: str, config: PythonConfig, rebuild_if_needed: bool = True) ->
                         check=True,
                     )
 
-                venv_bin_dir = os.path.dirname(venv_layout.python)
+                venv_bin_dir = Path(os.path.dirname(venv_layout.python))
                 work_dir_path = str(work_dir)
                 work_dir_path_bytes = work_dir_path.encode()
                 venv_dir_path = str(venv_dir)
                 venv_dir_path_bytes = venv_dir_path.encode()
-                for path in os.listdir(venv_bin_dir):
-                    candidate_console_script = os.path.join(venv_bin_dir, path)
-                    with open(candidate_console_script, "rb") as candidate_fp:
+                for candidate_console_script in venv_bin_dir.iterdir():
+                    if (
+                        not candidate_console_script.is_file()
+                        or candidate_console_script.is_symlink()
+                    ):
+                        continue
+                    with candidate_console_script.open("rb") as candidate_fp:
                         if candidate_fp.read(2) != b"#!":
                             continue
                         shebang = candidate_fp.readline()
                         if not shebang.startswith(work_dir_path_bytes):
                             continue
-                        with open(f"{candidate_console_script}.rewrite", "wb") as rewrite_fp:
+                        rewrite_target = candidate_console_script.with_suffix(".rewrite")
+                        with rewrite_target.open("wb") as rewrite_fp:
                             rewrite_fp.write(b"#!")
                             rewrite_fp.write(
                                 shebang.replace(work_dir_path_bytes, venv_dir_path_bytes)
                             )
                             shutil.copyfileobj(candidate_fp, rewrite_fp)
-                    os.rename(rewrite_fp.name, candidate_console_script)
+                    rewrite_target.rename(candidate_console_script)
                     _chmod_plus_x(candidate_console_script)
 
                 with (work_dir / layout_file.name).open("w") as out_fp:

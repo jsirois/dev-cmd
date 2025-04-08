@@ -18,7 +18,7 @@ from dev_cmd import color
 from dev_cmd.color import USE_COLOR
 from dev_cmd.console import Console
 from dev_cmd.errors import ExecutionError, InvalidModelError
-from dev_cmd.model import Command, ExitStyle, Group, Task
+from dev_cmd.model import Command, ExitStyle, Group, Python, Task
 from dev_cmd.venv import Venv
 
 
@@ -91,7 +91,7 @@ class Invocation:
     grace_period: float
     timings: bool
     venv: Venv | None
-    venvs: Mapping[str, Venv]
+    venvs: Mapping[Python, Venv]
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
 

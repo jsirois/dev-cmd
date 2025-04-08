@@ -23,6 +23,7 @@ from dev_cmd.model import (
     Factor,
     FactorDescription,
     Group,
+    Python,
     PythonConfig,
     Task,
 )
@@ -102,7 +103,7 @@ def _parse_commands(
             hidden = False
             description = None
             when = None
-            python = None
+            python: Python | None = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
 
@@ -187,12 +188,15 @@ def _parse_commands(
 
             when = _parse_when(command, table_path=f"[tool.dev-cmd.commands.{name}]")
 
-            python = command.pop("python", None)
-            if python and not isinstance(python, str):
-                raise InvalidModelError(
-                    f"The [tool.dev-cmd.commands.{name}] `python` value must be a string, "
-                    f"given: {python} of type {type(python)}."
-                )
+            python = None
+            python_spec = command.pop("python", None)
+            if python_spec:
+                if not isinstance(python_spec, str):
+                    raise InvalidModelError(
+                        f"The [tool.dev-cmd.commands.{name}] `python` value must be a string, "
+                        f"given: {python_spec} of type {type(python_spec)}."
+                    )
+                python = Python(python_spec)
 
             if data:
                 raise InvalidModelError(
@@ -726,7 +730,7 @@ def _parse_python(
     )
 
 
-def select_python_config(python: str, pythons: Iterable[PythonConfig]) -> PythonConfig | None:
+def select_python_config(python: Python, pythons: Iterable[PythonConfig]) -> PythonConfig | None:
     marker_environment = venv.marker_environment(python)
     activated_index: int | None = None
     activated_python_config: PythonConfig | None = None
@@ -746,7 +750,7 @@ def select_python_config(python: str, pythons: Iterable[PythonConfig]) -> Python
 
 
 def _parse_pythons(
-    python: str | None, python_config_data: Any, pyproject_data: dict[str, Any]
+    python: Python | None, python_config_data: Any, pyproject_data: dict[str, Any]
 ) -> tuple[Venv | None, tuple[PythonConfig, ...]]:
     if python and not python_config_data:
         raise InvalidArgumentError(
@@ -813,7 +817,7 @@ def _gather_all_required_step_names(
 
 
 def parse_dev_config(
-    pyproject_toml: PyProjectToml, *requested_steps: str, requested_python: str | None = None
+    pyproject_toml: PyProjectToml, *requested_steps: str, requested_python: Python | None = None
 ) -> Configuration:
     pyproject_data = pyproject_toml.parse()
     try:
@@ -844,7 +848,10 @@ def parse_dev_config(
     default_step_name = dev_cmd_data.pop("default", None)
 
     required_steps: defaultdict[str, list[tuple[Factor, ...]]] = defaultdict(list)
-    known_names = tuple(itertools.chain(commands_data, tasks_data))
+    known_names = tuple(
+        data.get("name", name) if isinstance(data, dict) else name
+        for name, data in itertools.chain(commands_data.items(), tasks_data.items())
+    )
     required_step_names = (
         _gather_all_required_step_names(requested_steps, tasks_data) or known_names
     )

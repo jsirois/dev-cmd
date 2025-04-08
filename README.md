@@ -327,8 +327,8 @@ errors at the very end.
 ### Custom Pythons
 
 If you'd like to use a modern development tool, but you need to run commands against older Pythons
-than it supports, you may be able to leverage the `--python` option as a workaround. There are a few
-preconditions your setup needs to satisfy to be able to use this approach:
+than it supports, you may be able to leverage the `--py` / `--python` option as a workaround. There
+are a few preconditions your setup needs to satisfy to be able to use this approach:
 1. Your development tool needs to support locking for older pythons if it uses lock files.
 2. Your development tool needs to be able to export your project development requirements in Pip
    requirements.txt format.

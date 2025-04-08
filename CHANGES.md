@@ -1,5 +1,18 @@
 # Release Notes
 
+## 0.25.0
+
+This release adds support for `--python` and command "python" abbreviations. In addition to
+specifying `--python /usr/bin/python3.12` and `--python python3.12` you can now just say
+`--python 3.12` and this will be expanded to `--python python3.12`. For maximum brevity, you can
+say `--py 3.12`.
+
+Also, creating `--python` venvs previously would error out in some scenarios previously when
+re-writing venv script shebangs. This is now fixed.
+
+Finally, using factors now mixes cleanly with commands that have aliases. Specifying a factor for
+the alias now plumbs through to the underlying command correctly.
+
 ## 0.24.0
 
 This release adds support for setting a custom `python` per-command. This `python` works just like

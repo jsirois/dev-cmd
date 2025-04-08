@@ -22,7 +22,7 @@ from dev_cmd.console import Console
 from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
 from dev_cmd.expansion import expand
 from dev_cmd.invoke import Invocation
-from dev_cmd.model import Command, Configuration, ExitStyle, Group, PythonConfig, Task, Venv
+from dev_cmd.model import Command, Configuration, ExitStyle, Group, Python, PythonConfig, Task, Venv
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import find_pyproject_toml
@@ -50,8 +50,8 @@ def _iter_commands(
 
 def _ensure_venvs(
     steps: Iterable[Command | Task], pythons: Iterable[PythonConfig]
-) -> Mapping[str, Venv]:
-    pythons_to_requesting_commands: DefaultDict[str, list[Command]] = defaultdict(list)
+) -> Mapping[Python, Venv]:
+    pythons_to_requesting_commands: DefaultDict[Python, list[Command]] = defaultdict(list)
     for command in _iter_commands(steps):
         if command.python:
             pythons_to_requesting_commands[command.python].append(command)
@@ -70,7 +70,7 @@ def _ensure_venvs(
             f"{missing_pythons}"
         )
 
-    venvs_by_python: dict[str, Venv] = {}
+    venvs_by_python: dict[Python, Venv] = {}
     for python, requesting_commands in pythons_to_requesting_commands.items():
         python_config = parse.select_python_config(python, pythons)
         if not python_config:
@@ -242,7 +242,13 @@ def _parse_args() -> Options:
             "--py",
             "--python",
             dest="python",
-            help="Select an older python to run dev-cmd against.",
+            help=(
+                "Select an older python to run `dev-cmd` against. The value can be a full path to "
+                "the exact CPython or PyPy binary to use or just the binary name; e.g.: pypy3.10,"
+                "in which case the interpreter will be looked up on the PATH. You can omit the "
+                "python prefix for a PATH search and it will be filled in; i.e.: 3.12 will be "
+                "expanded to python3.12 and then looked up on the PATH."
+            ),
         )
 
     exit_style_group = parser.add_mutually_exclusive_group()
@@ -428,9 +434,10 @@ def main() -> Any:
     start = time.time()
     options = _parse_args()
     console = Console(quiet=options.quiet)
+    python = Python(options.python) if options.python else None
     try:
         pyproject_toml = find_pyproject_toml()
-        config = parse_dev_config(pyproject_toml, *options.tasks, requested_python=options.python)
+        config = parse_dev_config(pyproject_toml, *options.tasks, requested_python=python)
     except DevCmdError as e:
         return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
 
