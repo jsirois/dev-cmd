@@ -76,7 +76,7 @@ class Environment(Substituter[State, str]):
             matching_factors = [
                 factor for factor in state.factors if factor.startswith(factor_name)
             ]
-            if not matching_factors and not default:
+            if not matching_factors and default is None:
                 raise ValueError(f"The factor parameter '-{factor_name}' is not set.")
             if len(matching_factors) > 1:
                 factors = " ".join(f"'-{factor}'" for factor in matching_factors)

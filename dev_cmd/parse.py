@@ -103,7 +103,7 @@ def _parse_commands(
             hidden = False
             description = None
             when = None
-            python: Python | None = None
+            python_spec: str | None = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
 
@@ -188,15 +188,13 @@ def _parse_commands(
 
             when = _parse_when(command, table_path=f"[tool.dev-cmd.commands.{name}]")
 
-            python = None
-            python_spec = command.pop("python", None)
-            if python_spec:
-                if not isinstance(python_spec, str):
-                    raise InvalidModelError(
-                        f"The [tool.dev-cmd.commands.{name}] `python` value must be a string, "
-                        f"given: {python_spec} of type {type(python_spec)}."
-                    )
-                python = Python(python_spec)
+            raw_python = command.pop("python", None)
+            if raw_python and not isinstance(raw_python, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `python` value must be a string, "
+                    f"given: {raw_python} of type {type(raw_python)}."
+                )
+            python_spec = raw_python
 
             if data:
                 raise InvalidModelError(
@@ -218,6 +216,10 @@ def _parse_commands(
                 )
                 used_factors.update(substitution.used_factors)
                 return substitution.value
+
+            substituted_python: Python | None = None
+            if python_spec and (python_spec_prime := substitute(python_spec)):
+                substituted_python = Python(python_spec_prime)
 
             substituted_args = [substitute(arg) for arg in args]
             substituted_extra_env = [(key, substitute(value)) for key, value in extra_env]
@@ -275,7 +277,7 @@ def _parse_commands(
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                     when=when,
-                    python=python,
+                    python=substituted_python,
                 )
 
             if not when or when.evaluate(marker_environment):
@@ -301,7 +303,7 @@ def _parse_commands(
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                     when=when,
-                    python=python,
+                    python=substituted_python,
                 )
 
 
@@ -730,8 +732,10 @@ def _parse_python(
     )
 
 
-def select_python_config(python: Python, pythons: Iterable[PythonConfig]) -> PythonConfig | None:
-    marker_environment = venv.marker_environment(python)
+def select_python_config(
+    python: Python, pythons: Iterable[PythonConfig], quiet: bool = False
+) -> PythonConfig | None:
+    marker_environment = venv.marker_environment(python, quiet=quiet)
     activated_index: int | None = None
     activated_python_config: PythonConfig | None = None
     for index, python_config in enumerate(pythons):

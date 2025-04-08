@@ -102,7 +102,7 @@ def _create_venv(python: str, venv_dir: str) -> _VenvLayout:
     return _VenvLayout(python=python_exe, site_packages_dir=site_packages_dir)
 
 
-def marker_environment(python: Python) -> dict[str, str]:
+def marker_environment(python: Python, quiet: bool = False) -> dict[str, str]:
     resolved_python = python.resolve()
     fingerprint = _fingerprint(resolved_python.encode())
     markers_file = _ensure_cache_dir() / "interpreters" / f"markers.{fingerprint}.json"
@@ -117,7 +117,8 @@ def marker_environment(python: Python) -> dict[str, str]:
             venv_layout = _create_venv(resolved_python, fspath(td))
             subprocess.run(
                 args=[venv_layout.python, "-m", "pip", "install", "packaging"],
-                stdout=sys.stderr.fileno(),
+                stdout=subprocess.DEVNULL if quiet else sys.stderr.fileno(),
+                stderr=subprocess.DEVNULL if quiet else None,
                 check=True,
             )
             temp_markers_file = Path(td) / markers_file.name
@@ -220,7 +221,9 @@ def _chmod_plus_x(path: Path) -> None:
     path.chmod(path_mode)
 
 
-def ensure(python: Python, config: PythonConfig, rebuild_if_needed: bool = True) -> Venv:
+def ensure(
+    python: Python, config: PythonConfig, rebuild_if_needed: bool = True, quiet=False
+) -> Venv:
     fingerprint = _fingerprint_python_config(python=python, config=config)
     venv_dir = _ensure_cache_dir() / "venvs" / fingerprint
     layout_file = venv_dir / ".dev-cmd-venv-layout.json"
@@ -250,6 +253,8 @@ def ensure(python: Python, config: PythonConfig, rebuild_if_needed: bool = True)
                         check=True,
                     )
 
+                    pip_stdout = subprocess.DEVNULL if quiet else sys.stderr.fileno()
+                    pip_stderr = subprocess.DEVNULL if quiet else None
                     subprocess.run(
                         args=[
                             venv_layout.python,
@@ -259,14 +264,16 @@ def ensure(python: Python, config: PythonConfig, rebuild_if_needed: bool = True)
                             "-U",
                             config.pip_requirement,
                         ],
-                        stdout=sys.stderr.fileno(),
+                        stdout=pip_stdout,
+                        stderr=pip_stderr,
                         check=True,
                     )
                     subprocess.run(
                         args=[venv_layout.python, "-m", "pip", "install"]
                         + list(config.thirdparty_pip_install_opts)
                         + ["-r", reqs_fp.name],
-                        stdout=sys.stderr.fileno(),
+                        stdout=pip_stdout,
+                        stderr=pip_stderr,
                         check=True,
                     )
 
@@ -289,7 +296,8 @@ def ensure(python: Python, config: PythonConfig, rebuild_if_needed: bool = True)
                             args=[venv_layout.python, "-m", "pip", "install"]
                             + list(config.extra_requirements_pip_install_opts)
                             + extra_requirements_args,
-                            stdout=sys.stderr.fileno(),
+                            stdout=pip_stdout,
+                            stderr=pip_stderr,
                             check=True,
                         )
 
@@ -342,7 +350,7 @@ def ensure(python: Python, config: PythonConfig, rebuild_if_needed: bool = True)
                     json.dump(
                         {
                             "python": venv_layout.python.replace(work_dir_path, venv_dir_path),
-                            "marker-environment": marker_environment(python),
+                            "marker-environment": marker_environment(python, quiet=quiet),
                         },
                         out_fp,
                     )

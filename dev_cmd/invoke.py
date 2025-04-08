@@ -58,21 +58,21 @@ class Invocation:
             if isinstance(step, Command):
                 if not step.accepts_extra_args:
                     continue
-                if accepts_extra_args and accepts_extra_args != step:
+                if accepts_extra_args and accepts_extra_args not in (step.base, step):
                     raise InvalidModelError(
                         f"The command {step.name!r} accepts extra args, but only one command can "
                         f"accept extra args per invocation and command "
                         f"{accepts_extra_args.name!r} already does."
                     )
-                accepts_extra_args = step
+                accepts_extra_args = step.base or step
             elif command := step.accepts_extra_args(skips):
-                if accepts_extra_args and accepts_extra_args != command:
+                if accepts_extra_args and accepts_extra_args not in (command.base, command):
                     raise InvalidModelError(
                         f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
                         f"args, but only one command can accept extra args per invocation and command "
                         f"{accepts_extra_args.name!r} already does."
                     )
-                accepts_extra_args = command
+                accepts_extra_args = command.base or command
 
         return cls(
             steps=tuple(step for step in steps if step.name not in skips),

@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.27.0
+
+The command python value can now be parametrized allowing for tox-style ad-hoc Python specification.
+
 ## 0.26.0
 
 The `--py` / `--python` and command "python" now all accet version number abbreviations without the
@@ -258,7 +262,7 @@ Fix regression in cwd and env support for commands.
 
 ## 0.3.0
 
-Add support for parallelizing execution of commands in an task.
+Add support for parallelizing execution of commands in a task.
 
 ## 0.2.1
 

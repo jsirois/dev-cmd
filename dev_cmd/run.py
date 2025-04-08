@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import functools
 import itertools
 import os
 import shlex
@@ -14,6 +15,7 @@ from argparse import ArgumentParser
 from asyncio import CancelledError
 from collections import defaultdict
 from dataclasses import dataclass
+from multiprocessing.pool import ThreadPool
 from typing import Any, Collection, DefaultDict, Iterable, Iterator, Mapping
 
 from dev_cmd import __version__, color, parse, venv
@@ -49,14 +51,14 @@ def _iter_commands(
 
 
 def _ensure_venvs(
-    steps: Iterable[Command | Task], pythons: Iterable[PythonConfig]
+    steps: Iterable[Command | Task], pythons_configs: Iterable[PythonConfig]
 ) -> Mapping[Python, Venv]:
     pythons_to_requesting_commands: DefaultDict[Python, list[Command]] = defaultdict(list)
     for command in _iter_commands(steps):
         if command.python:
             pythons_to_requesting_commands[command.python].append(command)
 
-    if pythons_to_requesting_commands and not pythons:
+    if pythons_to_requesting_commands and not pythons_configs:
         missing_pythons = "\n".join(
             f"+ {python!r} requested by: {' '.join(repr(rc.name) for rc in requesting_commands)}"
             for python, requesting_commands in pythons_to_requesting_commands.items()
@@ -70,9 +72,9 @@ def _ensure_venvs(
             f"{missing_pythons}"
         )
 
-    venvs_by_python: dict[Python, Venv] = {}
-    for python, requesting_commands in pythons_to_requesting_commands.items():
-        python_config = parse.select_python_config(python, pythons)
+    def ensure_venv(python: Python, *, quiet: bool) -> Venv:
+        requesting_commands = pythons_to_requesting_commands[python]
+        python_config = parse.select_python_config(python, pythons_configs, quiet=quiet)
         if not python_config:
             commands = "\n".join(f"+ {rc.name}" for rc in requesting_commands)
             raise InvalidArgumentError(
@@ -80,8 +82,19 @@ def _ensure_venvs(
                 f"configured `[[tool.dev-cmd.python]]` entries apply:\n"
                 f"{commands}"
             )
-        venvs_by_python[python] = venv.ensure(python, python_config)
-    return venvs_by_python
+        return venv.ensure(python, python_config, quiet=quiet)
+
+    if len(pythons_to_requesting_commands) == 1:
+        python, requesting_commands = pythons_to_requesting_commands.popitem()
+        return {python: ensure_venv(python, quiet=False)}
+
+    pool = ThreadPool()
+    try:
+        pythons = list(pythons_to_requesting_commands)
+        return dict(zip(pythons, pool.map(functools.partial(ensure_venv, quiet=True), pythons)))
+    finally:
+        pool.close()
+        pool.join()
 
 
 def _run(

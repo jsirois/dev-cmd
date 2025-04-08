@@ -114,6 +114,7 @@ args = [
 ]
 
 [tool.dev-cmd.commands.test]
+python = "{-py:}"
 args = ["pytest"]
 cwd = "tests"
 accepts-extra-args = true

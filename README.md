@@ -123,7 +123,7 @@ args = ["scripts/query-windows-registry.py"]
 
 #### Parameterization
 
-Both command arguments and env values can be parameterized with values from the execution
+A command's python, arguments and env values can be parameterized with values from the execution
 environment. Parameters are introduced in between brackets with an optional default value:
 `{<key>(:<default>)?}`. Parameters can draw from three sources:
 1. Environment variables via `{env.<name>}`; e.g.: `{env.HOME}`

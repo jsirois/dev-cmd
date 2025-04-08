@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePath
 from typing import Any, Container, Mapping, MutableMapping
@@ -53,7 +53,7 @@ class Command:
     description: str | None = None
     factor_descriptions: tuple[FactorDescription, ...] = ()
     when: Marker | None = None
-    python: Python | None = None
+    python: Python | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
