@@ -1,5 +1,12 @@
 # Release Notes
 
+## 0.28.0
+
+As long as there is at least one command left to execute, tasks and any groups they contain now
+support having individual commands deactivated by `when` environment markers. This allows running
+tasks under multiple different Pythons and just running a subset of commands instead of failing when
+not all commands are available to execute under the selected Python.
+
 ## 0.27.0
 
 The command python value can now be parametrized allowing for tox-style ad-hoc Python specification.

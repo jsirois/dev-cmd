@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePath
-from typing import Any, Container, Mapping, MutableMapping
+from typing import Any, Container, Iterator, Mapping, MutableMapping
 
 from packaging.markers import Marker
 
@@ -60,14 +60,14 @@ class Command:
 class Group:
     members: tuple[Command | Task | Group, ...]
 
-    def accepts_extra_args(self, skips: Container[str]) -> Command | None:
+    def iter_commands(self, skips: Container[str]) -> Iterator[Command]:
         for member in self.members:
             if isinstance(member, Command):
-                if member.accepts_extra_args and member.name not in skips:
-                    return member
-            elif command := member.accepts_extra_args(skips):
-                return command
-        return None
+                if member.name not in skips:
+                    yield member
+            else:
+                for command in member.iter_commands(skips):
+                    yield command
 
 
 @dataclass(frozen=True)
@@ -78,10 +78,15 @@ class Task:
     description: str | None = None
     when: Marker | None = None
 
-    def accepts_extra_args(self, skips: Container[str] = ()) -> Command | None:
-        if self.name in skips:
-            return None
-        return self.steps.accepts_extra_args(skips)
+    def accepts_extra_args(self, skips: Container[str] = ()) -> Iterator[Command]:
+        for command in self.iter_commands(skips):
+            if command.accepts_extra_args:
+                yield command
+
+    def iter_commands(self, skips: Container[str]) -> Iterator[Command]:
+        if self.name not in skips:
+            for command in self.steps.iter_commands(skips):
+                yield command
 
 
 class ExitStyle(Enum):

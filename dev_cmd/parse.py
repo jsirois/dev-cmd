@@ -7,6 +7,7 @@ import dataclasses
 import itertools
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Container, Dict, Iterable, Iterator, List, Mapping, Set, cast
 
@@ -79,12 +80,17 @@ def _parse_when(data: dict[str, Any], table_path: str) -> Marker | None:
         )
 
 
+@dataclass(frozen=True)
+class DeactivatedCommand:
+    name: str
+
+
 def _parse_commands(
     commands: dict[str, Any] | None,
     required_steps: dict[str, list[tuple[Factor, ...]]],
     project_dir: Path,
     marker_environment: dict[str, str] | None,
-) -> Iterator[Command]:
+) -> Iterator[Command | DeactivatedCommand]:
     if not commands:
         raise InvalidModelError(
             "There must be at least one entry in the [tool.dev-cmd.commands] table to run "
@@ -280,8 +286,10 @@ def _parse_commands(
                     python=substituted_python,
                 )
 
-            if not when or when.evaluate(marker_environment):
-                final_name = f"{name}{factors_suffix}"
+            final_name = f"{name}{factors_suffix}"
+            if when and not when.evaluate(marker_environment):
+                yield DeactivatedCommand(final_name)
+            else:
                 previous_original_name = seen_commands.get(final_name)
                 if previous_original_name and previous_original_name != original_name:
                     raise InvalidModelError(
@@ -312,14 +320,17 @@ def _parse_group(
     group: list[Any],
     all_task_names: Container[str],
     tasks_defined_so_far: Mapping[str, Task],
-    commands: Mapping[str, Command],
+    commands: Mapping[str, Command | DeactivatedCommand],
 ) -> Group:
     members: list[Command | Task | Group] = []
     for index, member in enumerate(group):
         if isinstance(member, str):
             for item in expand(member):
+                command = commands.get(item)
+                if isinstance(command, DeactivatedCommand):
+                    continue
                 try:
-                    members.append(commands.get(item) or tasks_defined_so_far[item])
+                    members.append(command or tasks_defined_so_far[item])
                 except KeyError:
                     if item in all_task_names:
                         raise InvalidModelError(
@@ -362,7 +373,7 @@ def _parse_group(
 
 def _parse_tasks(
     tasks: dict[str, Any] | None,
-    commands: Mapping[str, Command],
+    commands: Mapping[str, Command | DeactivatedCommand],
     marker_environment: dict[str, str] | None,
 ) -> Iterator[Task]:
     if not tasks:
@@ -454,11 +465,13 @@ def _parse_tasks(
 
 
 def _parse_default(
-    default: Any, commands: Mapping[str, Command], tasks: Mapping[str, Task]
+    default: Any, commands: Mapping[str, Command | DeactivatedCommand], tasks: Mapping[str, Task]
 ) -> Command | Task | None:
     if default is None:
         if len(commands) == 1:
-            return next(iter(commands.values()))
+            only_command = next(iter(commands.values()))
+            if isinstance(only_command, Command):
+                return only_command
         return None
 
     if not isinstance(default, str):
@@ -467,8 +480,11 @@ def _parse_default(
             f"{type(default)}."
         )
 
+    if selected_task := tasks.get(default):
+        return selected_task
     try:
-        return tasks.get(default) or commands[default]
+        selected_command = commands[default]
+        return selected_command if isinstance(selected_command, Command) else None
     except KeyError:
         raise InvalidModelError(
             os.linesep.join(
@@ -875,7 +891,7 @@ def parse_dev_config(
             )
             break
 
-    commands = {
+    commands: dict[str, Command | DeactivatedCommand] = {
         cmd.name: cmd
         for cmd in _parse_commands(
             commands_data,
@@ -904,7 +920,7 @@ def parse_dev_config(
         )
 
     return Configuration(
-        commands=tuple(commands.values()),
+        commands=tuple(cmd for cmd in commands.values() if isinstance(cmd, Command)),
         tasks=tuple(tasks.values()),
         default=default,
         exit_style=exit_style,

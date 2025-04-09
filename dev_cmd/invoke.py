@@ -12,7 +12,7 @@ from asyncio.subprocess import Process
 from asyncio.tasks import Task as AsyncTask
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Container, Mapping
+from typing import Any, AsyncIterator, Container, Iterator, Mapping
 
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
@@ -65,14 +65,15 @@ class Invocation:
                         f"{accepts_extra_args.name!r} already does."
                     )
                 accepts_extra_args = step.base or step
-            elif command := step.accepts_extra_args(skips):
-                if accepts_extra_args and accepts_extra_args not in (command.base, command):
-                    raise InvalidModelError(
-                        f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
-                        f"args, but only one command can accept extra args per invocation and command "
-                        f"{accepts_extra_args.name!r} already does."
-                    )
-                accepts_extra_args = command.base or command
+            elif commands := tuple(step.accepts_extra_args(skips)):
+                for command in commands:
+                    if accepts_extra_args and accepts_extra_args not in (command.base, command):
+                        raise InvalidModelError(
+                            f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
+                            f"args, but only one command can accept extra args per invocation and command "
+                            f"{accepts_extra_args.name!r} already does."
+                        )
+                    accepts_extra_args = command.base or command
 
         return cls(
             steps=tuple(step for step in steps if step.name not in skips),
@@ -94,6 +95,16 @@ class Invocation:
     venvs: Mapping[Python, Venv]
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
+
+    def iter_commands(self) -> Iterator[Command]:
+        for step in self.steps:
+            if step.name in self.skips:
+                continue
+            elif isinstance(step, Command):
+                yield step
+            else:
+                for command in step.iter_commands(self.skips):
+                    yield command
 
     @asynccontextmanager
     async def _guarded_ctrl_c(self) -> AsyncIterator[None]:

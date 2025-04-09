@@ -174,6 +174,11 @@ def _run(
             f"arguments: {shlex.join(extra_args)}"
         )
 
+    if not tuple(invocation.iter_commands()):
+        raise InvalidArgumentError(
+            "All steps in this invocation of `dev-cmd` were deactivated by `when` markers leaving "
+            "nothing to run."
+        )
     invocation = dataclasses.replace(
         invocation, venvs=_ensure_venvs(invocation.steps, config.pythons)
     )
@@ -435,8 +440,10 @@ def _list(
             rendered_task_name = color.color(task.name, fg="magenta", style="bold")
             if config.default == task:
                 rendered_task_name = f"* {rendered_task_name}"
-            if extra_args_cmd := task.accepts_extra_args():
-                extra_args_help = color.magenta(f" (-- extra {extra_args_cmd.args[0]} args ...)")
+            if extra_args_cmds := tuple(task.accepts_extra_args()):
+                extra_args_help = color.magenta(
+                    f" (-- extra {extra_args_cmds[0].args[0]} args ...)"
+                )
                 rendered_task_name = f"{rendered_task_name}{extra_args_help}"
             if task.description:
                 console.print(f"{rendered_task_name}: ")
