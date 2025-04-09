@@ -1,5 +1,17 @@
 # Release Notes
 
+## 0.29.0
+
+Add support for `-` in factor values by escaping with a leading `-`; i.e. to pass the value of
+`bar-baz` for factor `foo` of command `test` you can now say: `test-foo:bar--baz` (or
+`test-foobar--baz`).
+
+Also fix an issue with `pyproject.toml` discovery when `dev-cmd` is installed in another repo in
+editable mode.
+
+Finally, fix over-eager command deactivation in some cases where commands had multiple
+implementations selected amongst via `when` markers.
+
 ## 0.28.0
 
 As long as there is at least one command left to execute, tasks and any groups they contain now

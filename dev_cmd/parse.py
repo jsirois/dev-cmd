@@ -6,7 +6,7 @@ from __future__ import annotations
 import dataclasses
 import itertools
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Container, Dict, Iterable, Iterator, List, Mapping, Set, cast
@@ -838,7 +838,7 @@ def _gather_all_required_step_names(
 
 def parse_dev_config(
     pyproject_toml: PyProjectToml, *requested_steps: str, requested_python: Python | None = None
-) -> Configuration:
+) -> tuple[Configuration, tuple[str, ...]]:
     pyproject_data = pyproject_toml.parse()
     try:
         dev_cmd_data = _assert_dict_str_keys(
@@ -875,6 +875,7 @@ def parse_dev_config(
     required_step_names = (
         _gather_all_required_step_names(requested_steps, tasks_data) or known_names
     )
+    requested_step_names: dict[str, str] = {step: step for step in requested_steps}
     for required_step_name in required_step_names:
         if required_step_name in known_names:
             required_steps[required_step_name].append(())
@@ -883,23 +884,46 @@ def parse_dev_config(
             if not required_step_name.startswith(f"{known_name}-"):
                 continue
 
-            required_steps[known_name].append(
-                tuple(
-                    Factor(factor)
-                    for factor in required_step_name[len(known_name) + 1 :].split("-")
-                )
+            factors = []  # type: List[Factor]
+            factor_chars = []  # type: List[str]
+            chars = deque(required_step_name[len(known_name) + 1 :])
+            while chars:
+                while chars:
+                    char = chars.popleft()
+
+                    if char != "-":
+                        factor_chars.append(char)
+                        continue
+
+                    # Escaped - (--)
+                    if chars and chars[0] == "-":
+                        factor_chars.append(char)
+                        chars.popleft()
+                        continue
+
+                    if not chars:
+                        factor_chars.append(char)
+
+                    break
+                factors.append(Factor("".join(factor_chars)))
+                factor_chars.clear()
+
+            required_steps[known_name].append(tuple(factors))
+            requested_step_names[required_step_name] = (
+                f"{known_name}-{'-'.join(factors)}" if factors else known_name
             )
             break
 
-    commands: dict[str, Command | DeactivatedCommand] = {
-        cmd.name: cmd
-        for cmd in _parse_commands(
-            commands_data,
-            required_steps,
-            project_dir=pyproject_toml.path.parent,
-            marker_environment=marker_environment,
-        )
-    }
+    commands: dict[str, Command | DeactivatedCommand] = {}
+    for cmd in _parse_commands(
+        commands_data,
+        required_steps,
+        project_dir=pyproject_toml.path.parent,
+        marker_environment=marker_environment,
+    ):
+        existing = commands.setdefault(cmd.name, cmd)
+        if isinstance(existing, DeactivatedCommand) and isinstance(cmd, Command):
+            commands[cmd.name] = cmd
     if not commands:
         raise InvalidModelError(
             "No commands are defined in the [tool.dev-cmd.commands] table. At least one must be "
@@ -919,7 +943,7 @@ def parse_dev_config(
             f"Unexpected configuration keys in the [tool.dev-cmd] table: {' '.join(dev_cmd_data)}"
         )
 
-    return Configuration(
+    configuration = Configuration(
         commands=tuple(cmd for cmd in commands.values() if isinstance(cmd, Command)),
         tasks=tuple(tasks.values()),
         default=default,
@@ -929,3 +953,5 @@ def parse_dev_config(
         pythons=pythons,
         source=pyproject_toml.path,
     )
+
+    return configuration, tuple(requested_step_names[step] for step in requested_steps)

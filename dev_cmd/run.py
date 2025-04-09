@@ -99,7 +99,7 @@ def _ensure_venvs(
 
 def _run(
     config: Configuration,
-    *names: str,
+    *steps: str,
     skips: Collection[str] = (),
     console: Console = Console(),
     parallel: bool = False,
@@ -126,10 +126,10 @@ def _run(
             f"configured command or task names."
         )
 
-    if names:
+    if steps:
         try:
             invocation = Invocation.create(
-                *(available_tasks.get(name) or available_cmds[name] for name in names),
+                *(available_tasks.get(step) or available_cmds[step] for step in steps),
                 skips=skips,
                 console=console,
                 grace_period=grace_period,
@@ -137,10 +137,11 @@ def _run(
                 venv=config.venv,
             )
         except KeyError as e:
+            print(e, file=sys.stderr)
             raise InvalidArgumentError(
                 os.linesep.join(
                     (
-                        f"A requested task is not defined in {config.source}: {e}",
+                        f"A requested step is not defined in {config.source}: {e}",
                         "",
                         f"Available tasks: {' '.join(sorted(available_tasks))}",
                         f"Available commands: {' '.join(sorted(available_cmds))}",
@@ -193,7 +194,7 @@ def _run(
 
 @dataclass(frozen=True)
 class Options:
-    tasks: tuple[str, ...]
+    steps: tuple[str, ...]
     skips: frozenset[str]
     list: bool
     quiet: bool
@@ -322,7 +323,7 @@ def _parse_args() -> Options:
         ),
     )
     parser.add_argument(
-        "tasks",
+        "steps",
         nargs="*",
         metavar="cmd|task",
         help=(
@@ -346,10 +347,10 @@ def _parse_args() -> Options:
     options = parser.parse_args(args)
     color.set_color(ColorChoice(options.color))
 
-    tasks = tuple(itertools.chain.from_iterable(expand(task) for task in options.tasks))
-    parallel = options.parallel and len(tasks) > 1
+    steps = tuple(itertools.chain.from_iterable(expand(step) for step in options.steps))
+    parallel = options.parallel and len(steps) > 1
     if options.parallel and not parallel and not options.quiet:
-        single_task = repr(tasks[0]) if tasks else "the default"
+        single_task = repr(steps[0]) if steps else "the default"
         print(
             color.yellow(
                 f"A parallel run of top-level tasks was requested but only one was requested, "
@@ -358,7 +359,7 @@ def _parse_args() -> Options:
         )
 
     return Options(
-        tasks=tasks,
+        steps=steps,
         skips=frozenset(options.skips),
         list=options.list,
         quiet=options.quiet,
@@ -407,7 +408,7 @@ def _list(
             factor_desc_header = f"    -{factor_description.factor}"
             rendered_factor = color.magenta(factor_desc_header)
             default = factor_description.default
-            if default:
+            if default is not None:
                 substituted_default = DEFAULT_ENVIRONMENT.substitute(default).value
                 if substituted_default != default:
                     extra_info = f"[default: {default} (currently {substituted_default})]"
@@ -459,7 +460,7 @@ def main() -> Any:
     python = Python(options.python) if options.python else None
     try:
         pyproject_toml = find_pyproject_toml()
-        config = parse_dev_config(pyproject_toml, *options.tasks, requested_python=python)
+        config, steps = parse_dev_config(pyproject_toml, *options.steps, requested_python=python)
     except DevCmdError as e:
         return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
 
@@ -470,7 +471,7 @@ def main() -> Any:
     try:
         _run(
             config,
-            *options.tasks,
+            *steps,
             skips=options.skips,
             console=console,
             parallel=options.parallel,

@@ -149,7 +149,8 @@ to ambiguity in which factor argument should be applied. An optional leading `:`
 factor argument value, and it will be stripped. So both `test-py:3.12` and `test-py3.12` pass `3.12`
 as the value for the `-py` factor parameter. The colon-prefix helps distinguish factor name from
 factor value, paralleling the default value syntax that can be used at factor parameter declaration
-sites.
+sites. If your factor value contains a `-`, just escape it with a `-`; i.e.: `--` will map to a
+single `-` in a factor value instead of indicating a new factor starts there.
 
 #### Documentation
 

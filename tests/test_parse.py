@@ -26,7 +26,7 @@ def parse_config(tmp_path: Path) -> Iterator[ConfigurationParser]:
     def parse(content: str) -> Configuration:
         pyproject_toml = tmp_path / "pyproject.toml"
         pyproject_toml.write_text(content)
-        return parse_dev_config(PyProjectToml(pyproject_toml))
+        return parse_dev_config(PyProjectToml(pyproject_toml))[0]
 
     yield parse
 

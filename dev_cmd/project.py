@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from importlib import metadata
-from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from typing import Any
 
@@ -35,18 +33,7 @@ class PyProjectToml:
 
 
 def find_pyproject_toml() -> PyProjectToml:
-    module = Path(__file__)
-    start = module.parent
-    try:
-        dist_files = metadata.files("dev-cmd")
-        if dist_files and any(module == dist_file.locate() for dist_file in dist_files):
-            # N.B.: We're running from an installed package; so use the PWD as the search start.
-            start = Path()
-    except PackageNotFoundError:
-        # N.B.: We're being run directly from sources that are not installed or are installed in
-        # editable mode.
-        pass
-
+    start = Path()
     candidate = start.resolve()
     while True:
         pyproject_toml = candidate / "pyproject.toml"
