@@ -42,6 +42,47 @@ def _assert_list_str(obj: Any, *, path: str) -> list[str]:
     return cast(List[str], obj)
 
 
+class DiscardEmpty(str):
+    pass
+
+
+def _assert_list_str_or_discard(obj: Any, *, path: str) -> list[str | DiscardEmpty]:
+    if not isinstance(obj, list):
+        raise InvalidModelError(
+            f"Expected value at {path} to be a list of strings and discards, but given: {obj} of "
+            f"type {type(obj)}."
+        )
+    result: list[str | DiscardEmpty] = []
+    for index, item in enumerate(obj):
+        if isinstance(item, str):
+            result.append(item)
+        elif isinstance(item, dict):
+            count = len(item)
+            if count == 0:
+                raise InvalidModelError(
+                    f"Expected value at {path} to be a list of strings and discards, but the list "
+                    f"item at index {index} is an empty table."
+                )
+            value = item.pop("discard_empty", None)
+            if value and not isinstance(value, str):
+                raise InvalidModelError(
+                    f"Expected discard_empty table at {path}[{index}] to be a string, but given "
+                    f"{value} of type {type(value)}."
+                )
+            elif item:
+                raise InvalidModelError(
+                    f"Expected value at {path} to be a list of strings and discards, but table at "
+                    f"index {index} has unrecognized keys: {' '.join(item)}."
+                )
+            result.append(DiscardEmpty(value))
+        else:
+            raise InvalidModelError(
+                f"Expected value at {path} to be a list of strings and discards, but the list item "
+                f"at index {index}: {item} of type {type(item)}."
+            )
+    return result
+
+
 def _assert_dict_str_keys(obj: Any, *, path: str) -> dict[str, Any]:
     if not isinstance(obj, dict) or not all(isinstance(key, str) for key in obj):
         raise InvalidModelError(
@@ -107,7 +148,9 @@ def _parse_commands(
         factor_descriptions: dict[Factor, str | None] = {}
         original_name = name
         if isinstance(data, list):
-            args = tuple(_assert_list_str(data, path=f"[tool.dev-cmd.commands] `{name}`"))
+            args = tuple(
+                _assert_list_str_or_discard(data, path=f"[tool.dev-cmd.commands] `{name}`")
+            )
             accepts_extra_args = False
             hidden = False
             description = None
@@ -136,7 +179,7 @@ def _parse_commands(
 
             try:
                 args = tuple(
-                    _assert_list_str(
+                    _assert_list_str_or_discard(
                         command.pop("args"), path=f"[tool.dev-cmd.commands.{name}] `args`"
                     )
                 )
@@ -244,7 +287,12 @@ def _parse_commands(
                         python_spec_prime.value, from_py_factor=from_py_factor
                     )
 
-            substituted_args = [substitute(arg).value for arg in args]
+            substituted_args: list[str] = []
+            for arg in args:
+                value = substitute(arg).value
+                if value or not isinstance(arg, DiscardEmpty):
+                    substituted_args.append(value)
+
             substituted_extra_env = [(key, substitute(value).value) for key, value in extra_env]
 
             unused_factors = [factor for factor in factors if factor not in used_factors]
@@ -901,8 +949,8 @@ def parse_dev_config(
             if not required_step_name.startswith(f"{known_name}-"):
                 continue
 
-            factors = []  # type: List[Factor]
-            factor_chars = []  # type: List[str]
+            factors: list[Factor] = []
+            factor_chars: list[str] = []
             chars = deque(required_step_name[len(known_name) + 1 :])
             while chars:
                 while chars:

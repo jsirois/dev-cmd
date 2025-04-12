@@ -18,15 +18,15 @@ from dev_cmd.project import PyProjectToml
 
 
 class ConfigurationParser(Protocol):
-    def __call__(self, content: str) -> Configuration: ...
+    def __call__(self, content: str, *requested_steps: str) -> Configuration: ...
 
 
 @pytest.fixture
 def parse_config(tmp_path: Path) -> Iterator[ConfigurationParser]:
-    def parse(content: str) -> Configuration:
+    def parse(content: str, *requested_steps: str) -> Configuration:
         pyproject_toml = tmp_path / "pyproject.toml"
         pyproject_toml.write_text(content)
-        return parse_dev_config(PyProjectToml(pyproject_toml))[0]
+        return parse_dev_config(PyProjectToml(pyproject_toml), *requested_steps)[0]
 
     yield parse
 
@@ -201,3 +201,32 @@ def test_when_task_mutex_enforced(parse_config: ConfigurationParser) -> None:
                 """
             )
         )
+
+
+def test_discard_empty(parse_config: ConfigurationParser) -> None:
+    config = dedent(
+        """
+        [tool.dev-cmd.commands]
+        example = [
+            "python",
+            {discard_empty = "{-warnings_as_errors?-Werror:}"},
+            "-c",
+            "print('Hello World!')"
+        ]
+        """
+    )
+    assert (
+        tuple([Command("example", ("python", "-c", "print('Hello World!')"))])
+        == parse_config(config).commands
+    )
+    assert (
+        tuple(
+            [
+                Command(
+                    "example-warnings_as_errors",
+                    ("python", "-Werror", "-c", "print('Hello World!')"),
+                )
+            ]
+        )
+        == parse_config(config, "example-warnings_as_errors").commands
+    )

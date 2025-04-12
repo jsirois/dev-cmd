@@ -62,12 +62,12 @@ class Command:
     extra_env: tuple[tuple[str, str], ...] = ()
     cwd: PurePath | None = None
     accepts_extra_args: bool = False
-    base: Command | None = None
     hidden: bool = False
     description: str | None = None
-    factor_descriptions: tuple[FactorDescription, ...] = ()
     when: Marker | None = None
     python: Python | None = field(default=None, compare=False)
+    factor_descriptions: tuple[FactorDescription, ...] = field(default=(), compare=False)
+    base: Command | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)

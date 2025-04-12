@@ -2,6 +2,10 @@
 
 ## 0.30.0-WIP
 
+Add support for command arguments that are discarded is they evaluate to the empty string after
+processing parameter substitutions. These args just need to be wrapped in `{discard_empty = "..."}`
+single-item objects.
+
 Add special support for `-py` factors in command `python`. To indicate a PyPy implementation instead
 of CPython, you can just pass `py` for the factor value; so `-pypy` Maps to PyPy of any version,
 `-pypy3` maps to a PyPy with major version 3, and `-pypy310` or `-pypy3.10` maps to a PyPy with
