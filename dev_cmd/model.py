@@ -27,16 +27,29 @@ class FactorDescription:
 
 @dataclass(frozen=True)
 class Python:
+    @classmethod
+    def parse(cls, value: str, from_py_factor: bool) -> Python:
+        # Allow -py factors to indicate pypy succinctly, matching tox behavior:
+        # +       -pypy (-py:py) -> pypy
+        # +     -pypy3 (-py:py3) -> pypy3
+        # + -pypy310 (-py:py310) -> pypy3.10
+        if not value or not from_py_factor or not re.match(r"^py(\d{1,3}|\d\.\d{1,2})?$", value):
+            return cls(value)
+        return cls("py" + value, implementation_name="pypy")
+
     spec: str
+    implementation_name: str = "python"
 
     def resolve(self) -> str:
         def _expand(match: re.Match[str]) -> str:
-            version = match[0]
+            version = match[1]
             if len(version) > 1 and "." not in version:
                 version = f"{version[0]}.{version[1:]}"
-            return f"python{version}"
+            return f"{self.implementation_name}{version}"
 
-        return re.sub(r"^(\d{1,3}|\d\.\d{1,2})$", _expand, self.spec)
+        return re.sub(
+            rf"^(?:{self.implementation_name})?(\d{{1,3}}|\d\.\d{{1,2}})$", _expand, self.spec
+        )
 
     def __str__(self) -> str:
         return self.spec

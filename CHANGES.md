@@ -2,6 +2,11 @@
 
 ## 0.30.0-WIP
 
+Add special support for `-py` factors in command `python`. To indicate a PyPy implementation instead
+of CPython, you can just pass `py` for the factor value; so `-pypy` Maps to PyPy of any version,
+`-pypy3` maps to a PyPy with major version 3, and `-pypy310` or `-pypy3.10` maps to a PyPy with
+version 3.10.
+
 Add support for flag factors in the form `{-name?flag_value:default_value}` that allow the presence
 of `-name` in a command name to pass `flag_value` and the absence to pass `default_value`.
 

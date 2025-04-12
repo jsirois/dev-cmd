@@ -28,7 +28,7 @@ from dev_cmd.model import (
     PythonConfig,
     Task,
 )
-from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
+from dev_cmd.placeholder import DEFAULT_ENVIRONMENT, Substitution
 from dev_cmd.project import PyProjectToml
 from dev_cmd.venv import Venv
 
@@ -83,6 +83,9 @@ def _parse_when(data: dict[str, Any], table_path: str) -> Marker | None:
 @dataclass(frozen=True)
 class DeactivatedCommand:
     name: str
+
+
+PY_FACTOR = Factor("py")
 
 
 def _parse_commands(
@@ -214,7 +217,7 @@ def _parse_commands(
             seen_factors: dict[Factor, FactorDescription] = {}
             used_factors: set[Factor] = set()
 
-            def substitute(text: str) -> str:
+            def substitute(text: str) -> Substitution:
                 substitution = DEFAULT_ENVIRONMENT.substitute(text, *factors)
                 seen_factors.update(
                     (
@@ -228,14 +231,21 @@ def _parse_commands(
                     for seen_factor in substitution.seen_factors
                 )
                 used_factors.update(substitution.used_factors)
-                return substitution.value
+                return substitution
 
             substituted_python: Python | None = None
-            if python_spec and (python_spec_prime := substitute(python_spec)):
-                substituted_python = Python(python_spec_prime)
+            if python_spec:
+                python_spec_prime = substitute(python_spec)
+                if python_spec_prime.value:
+                    from_py_factor = any(
+                        PY_FACTOR == seen.factor for seen in python_spec_prime.seen_factors
+                    )
+                    substituted_python = Python.parse(
+                        python_spec_prime.value, from_py_factor=from_py_factor
+                    )
 
-            substituted_args = [substitute(arg) for arg in args]
-            substituted_extra_env = [(key, substitute(value)) for key, value in extra_env]
+            substituted_args = [substitute(arg).value for arg in args]
+            substituted_extra_env = [(key, substitute(value).value) for key, value in extra_env]
 
             unused_factors = [factor for factor in factors if factor not in used_factors]
             if unused_factors:
