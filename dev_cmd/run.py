@@ -405,17 +405,27 @@ def _list(
         else:
             console.print(rendered_command_name)
         for factor_description in command.factor_descriptions:
+            flag_value = factor_description.flag_value
             factor_desc_header = f"    -{factor_description.factor}"
+            if flag_value:
+                factor_desc_header += "?"
+
             rendered_factor = color.magenta(factor_desc_header)
             default = factor_description.default
+            extra_info = ""
+            if flag_value is not None:
+                extra_info = f"{flag_value} "
+                substituted_flag_value = DEFAULT_ENVIRONMENT.substitute(flag_value).value
+                if substituted_flag_value != flag_value:
+                    extra_info += f"(currently {substituted_flag_value}) "
             if default is not None:
                 substituted_default = DEFAULT_ENVIRONMENT.substitute(default).value
                 if substituted_default != default:
-                    extra_info = f"[default: {default} (currently {substituted_default})]"
+                    extra_info += f"[default: {default} (currently {substituted_default})]"
                 else:
-                    extra_info = f"[default: {default}]"
+                    extra_info += f"[default: {default}]"
             else:
-                extra_info = "[required]"
+                extra_info += "[required]"
             if factor_description.description:
                 desc_lines = factor_description.description.splitlines()
                 console.print(f"{rendered_factor}: {color.color(desc_lines[0], fg='gray')}")

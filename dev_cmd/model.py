@@ -20,6 +20,7 @@ class Factor(str):
 @dataclass(frozen=True)
 class FactorDescription:
     factor: Factor
+    flag_value: str | None = None
     default: str | None = None
     description: str | None = None
 

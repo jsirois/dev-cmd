@@ -217,8 +217,15 @@ def _parse_commands(
             def substitute(text: str) -> str:
                 substitution = DEFAULT_ENVIRONMENT.substitute(text, *factors)
                 seen_factors.update(
-                    (seen_factor, FactorDescription(seen_factor, default=default))
-                    for seen_factor, default in substitution.seen_factors
+                    (
+                        seen_factor.factor,
+                        FactorDescription(
+                            factor=seen_factor.factor,
+                            flag_value=seen_factor.flag_value,
+                            default=seen_factor.default,
+                        ),
+                    )
+                    for seen_factor in substitution.seen_factors
                 )
                 used_factors.update(substitution.used_factors)
                 return substitution.value

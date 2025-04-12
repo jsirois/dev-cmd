@@ -14,12 +14,20 @@ from dev_cmd.brace_substitution import Substituter
 from dev_cmd.model import Factor
 
 
+@dataclass(frozen=True)
+class SeenFactor:
+    factor: Factor
+    flag_value: str | None = None
+    default: str | None = None
+
+
 @dataclass
 class State:
     factors: tuple[Factor, ...] = ()
     text: list[str] = field(default_factory=list, init=False)
-    seen_factors: list[tuple[Factor, str | None]] = field(default_factory=list, init=False)
+    seen_factors: list[SeenFactor] = field(default_factory=list, init=False)
     used_factors: list[Factor] = field(default_factory=list, init=False)
+    substituted_sections: list[slice] = field(default_factory=list, init=False)
 
 
 @dataclass(frozen=True)
@@ -28,18 +36,21 @@ class Substitution:
     def create(
         cls,
         value: str,
-        seen_factors: Iterable[tuple[Factor, str | None]] = (),
+        seen_factors: Iterable[SeenFactor] = (),
         used_factors: Iterable[Factor] = (),
+        substituted_sections: Iterable[slice] = (),
     ) -> Substitution:
         return cls(
             value=value,
             seen_factors=tuple(dict.fromkeys(seen_factors)),
             used_factors=tuple(dict.fromkeys(used_factors)),
+            substituted_sections=tuple(substituted_sections),
         )
 
     value: str
-    seen_factors: tuple[tuple[Factor, str | None], ...] = ()
+    seen_factors: tuple[SeenFactor, ...] = ()
     used_factors: tuple[Factor, ...] = ()
+    substituted_sections: tuple[slice, ...] = field(default=(), compare=False, hash=False)
 
 
 @dataclass(frozen=True)
@@ -53,7 +64,10 @@ class Environment(Substituter[State, str]):
         state = State(factors)
         result = brace_substitution.substitute(text, self, state=state)
         return Substitution.create(
-            value=result, seen_factors=state.seen_factors, used_factors=state.used_factors
+            value=result,
+            seen_factors=state.seen_factors,
+            used_factors=state.used_factors,
+            substituted_sections=state.substituted_sections,
         )
 
     def raw_text(self, text: str, state: State) -> None:
@@ -71,8 +85,26 @@ class Environment(Substituter[State, str]):
         default = deflt if sep else None
         value: str | None
         if key.startswith("-"):
-            factor_name = self.substitute(key[1:]).value
-            state.seen_factors.append((Factor(factor_name), default))
+            flag, flag_sep, rest = symbol.partition("?")
+            if flag_sep:
+                substitution = self.substitute(rest)
+                colon_positions = {index for index, char in enumerate(rest) if char == ":"}
+                for substituted_section in substitution.substituted_sections:
+                    for index in range(*substituted_section.indices(len(rest))):
+                        colon_positions.discard(index)
+                assert len(colon_positions) > 0
+                colon_position = min(colon_positions)
+
+                factor_name = self.substitute(flag[1:]).value
+                flag_value = rest[:colon_position]
+                default = rest[colon_position + 1 :]
+            else:
+                factor_name = self.substitute(key[1:]).value
+                flag_value = None
+
+            state.seen_factors.append(
+                SeenFactor(factor=Factor(factor_name), flag_value=flag_value, default=default)
+            )
             matching_factors = [
                 factor for factor in state.factors if factor.startswith(factor_name)
             ]
@@ -86,7 +118,14 @@ class Environment(Substituter[State, str]):
                 )
             if matching_factors:
                 value = matching_factors[0][len(factor_name) :]
-                if value.startswith(":"):
+                if flag_sep:
+                    if value:
+                        raise ValueError(
+                            f"The factor argument '-{factor_name}?' is a flag that does not accept "
+                            f"a value but you passed value `{value}` via '-{factor_name}{value}'."
+                        )
+                    value = flag_value
+                elif value.startswith(":"):
                     value = value[1:]
                 state.used_factors.append(matching_factors[0])
             else:
@@ -111,6 +150,7 @@ class Environment(Substituter[State, str]):
         else:
             raise ValueError(f"Unrecognized substitution key {key!r}.")
         state.text.append(self.substitute(value).value)
+        state.substituted_sections.append(section)
 
     def result(self, state: State) -> str:
         return "".join(state.text)

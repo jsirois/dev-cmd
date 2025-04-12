@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.30.0-WIP
+
+Add support for flag factors in the form `{-name?flag_value:default_value}` that allow the presence
+of `-name` in a command name to pass `flag_value` and the absence to pass `default_value`.
+
 ## 0.29.0
 
 Add support for `-` in factor values by escaping with a leading `-`; i.e. to pass the value of
