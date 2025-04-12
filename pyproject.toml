@@ -64,14 +64,23 @@ include = ["dev_cmd*"]
 
 [dependency-groups]
 dev = [
+    "dev-cmd[old-pythons]",
+    "ruff",
+    {include-group = "test"},
+    {include-group = "type-check"},
+]
+test = [
     "ansicolors",
+    "packaging",
+    "pytest",
+]
+type-check = [
     "dev-cmd[old-pythons]",
     "mypy",
-    "pytest",
-    "ruff",
     "types-colorama",
     "types-setuptools",
     "types-tqdm",
+    {include-group = "test"},
 ]
 
 [[tool.mypy.overrides]]
@@ -112,12 +121,14 @@ args = [
     "dev_cmd",
     "tests",
 ]
+dependency-group = "type-check"
 
 [tool.dev-cmd.commands.test]
 python = "{-py:}"
 args = ["pytest"]
 cwd = "tests"
 accepts-extra-args = true
+dependency-group = "test"
 
 [tool.dev-cmd.tasks.checks]
 description = "Runs all development checks, including auto-formatting code."
@@ -147,4 +158,9 @@ extra-cache-keys = [
     "uv.lock",
 ]
 
-3rdparty-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+3rdparty-export-command = [
+    "uv", "export", "-q",
+    "--no-emit-project",
+    "--only-group", "{dependency-group:dev}",
+    "-o", "{requirements.txt}"
+]

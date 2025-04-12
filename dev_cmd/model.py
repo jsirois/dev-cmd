@@ -65,6 +65,7 @@ class Command:
     hidden: bool = False
     description: str | None = None
     when: Marker | None = None
+    dependency_group: str | None = None
     python: Python | None = field(default=None, compare=False)
     factor_descriptions: tuple[FactorDescription, ...] = field(default=(), compare=False)
     base: Command | None = field(default=None, compare=False)
@@ -144,6 +145,12 @@ class Venv:
     def update_path(self, env: MutableMapping[str, str]) -> None:
         path = env.pop("PATH", None)
         env["PATH"] = (self.bin_path + os.pathsep + path) if path else self.bin_path
+
+
+@dataclass(frozen=True)
+class VenvConfig:
+    python: Python
+    dependency_group: str | None = None
 
 
 @dataclass(frozen=True)

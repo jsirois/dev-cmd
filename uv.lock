@@ -58,8 +58,27 @@ dev = [
     { name = "dev-cmd", extra = ["old-pythons"] },
     { name = "mypy", version = "1.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "mypy", version = "1.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "packaging" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "types-colorama" },
+    { name = "types-setuptools", version = "75.8.0.20250110", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "types-setuptools", version = "78.1.0.20250329", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "types-tqdm", version = "4.67.0.20241221", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "types-tqdm", version = "4.67.0.20250404", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+]
+test = [
+    { name = "ansicolors" },
+    { name = "packaging" },
+    { name = "pytest" },
+]
+type-check = [
+    { name = "ansicolors" },
+    { name = "dev-cmd", extra = ["old-pythons"] },
+    { name = "mypy", version = "1.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "mypy", version = "1.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "packaging" },
+    { name = "pytest" },
     { name = "types-colorama" },
     { name = "types-setuptools", version = "75.8.0.20250110", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "types-setuptools", version = "78.1.0.20250329", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
@@ -85,8 +104,24 @@ dev = [
     { name = "ansicolors" },
     { name = "dev-cmd", extras = ["old-pythons"] },
     { name = "mypy" },
+    { name = "packaging" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "types-colorama" },
+    { name = "types-setuptools" },
+    { name = "types-tqdm" },
+]
+test = [
+    { name = "ansicolors" },
+    { name = "packaging" },
+    { name = "pytest" },
+]
+type-check = [
+    { name = "ansicolors" },
+    { name = "dev-cmd", extras = ["old-pythons"] },
+    { name = "mypy" },
+    { name = "packaging" },
+    { name = "pytest" },
     { name = "types-colorama" },
     { name = "types-setuptools" },
     { name = "types-tqdm" },

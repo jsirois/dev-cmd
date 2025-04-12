@@ -2,6 +2,11 @@
 
 ## 0.30.0-WIP
 
+Add support for varying `--python` venvs based on the command being run under the requested
+`--python`. This is done by specifying the `dependency-group` the command needs and then
+parametrizing the `[[tool.dev-cmd.python]] 3rdparty-export-command` with the `"{dependency-group}"`
+placeholder as appropriate.
+
 Add support for command arguments that are discarded is they evaluate to the empty string after
 processing parameter substitutions. These args just need to be wrapped in `{discard_empty = "..."}`
 single-item objects.

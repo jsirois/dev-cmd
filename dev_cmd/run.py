@@ -24,7 +24,17 @@ from dev_cmd.console import Console
 from dev_cmd.errors import DevCmdError, ExecutionError, InvalidArgumentError
 from dev_cmd.expansion import expand
 from dev_cmd.invoke import Invocation
-from dev_cmd.model import Command, Configuration, ExitStyle, Group, Python, PythonConfig, Task, Venv
+from dev_cmd.model import (
+    Command,
+    Configuration,
+    ExitStyle,
+    Group,
+    Python,
+    PythonConfig,
+    Task,
+    Venv,
+    VenvConfig,
+)
 from dev_cmd.parse import parse_dev_config
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
 from dev_cmd.project import find_pyproject_toml
@@ -52,16 +62,21 @@ def _iter_commands(
 
 def _ensure_venvs(
     steps: Iterable[Command | Task], pythons_configs: Iterable[PythonConfig]
-) -> Mapping[Python, Venv]:
-    pythons_to_requesting_commands: DefaultDict[Python, list[Command]] = defaultdict(list)
+) -> Mapping[VenvConfig, Venv]:
+    venv_configs_to_requesting_commands: DefaultDict[VenvConfig, list[Command]] = defaultdict(list)
     for command in _iter_commands(steps):
         if command.python:
-            pythons_to_requesting_commands[command.python].append(command)
+            venv_configs_to_requesting_commands[
+                VenvConfig(python=command.python, dependency_group=command.dependency_group)
+            ].append(command)
 
-    if pythons_to_requesting_commands and not pythons_configs:
+    if venv_configs_to_requesting_commands and not pythons_configs:
         missing_pythons = "\n".join(
-            f"+ {python!r} requested by: {' '.join(repr(rc.name) for rc in requesting_commands)}"
-            for python, requesting_commands in pythons_to_requesting_commands.items()
+            (
+                f"+ {venv_config.python!r} requested by: "
+                f"{' '.join(repr(rc.name) for rc in requesting_commands)}"
+            )
+            for venv_config, requesting_commands in venv_configs_to_requesting_commands.items()
         )
         raise InvalidArgumentError(
             f"Some of your configured commands requested custom pythons but you have not "
@@ -72,25 +87,25 @@ def _ensure_venvs(
             f"{missing_pythons}"
         )
 
-    def ensure_venv(python: Python, *, quiet: bool) -> Venv:
-        requesting_commands = pythons_to_requesting_commands[python]
-        python_config = parse.select_python_config(python, pythons_configs, quiet=quiet)
+    def ensure_venv(venv_config: VenvConfig, *, quiet: bool) -> Venv:
+        requesting_commands = venv_configs_to_requesting_commands[venv_config]
+        python_config = parse.select_python_config(venv_config.python, pythons_configs, quiet=quiet)
         if not python_config:
             commands = "\n".join(f"+ {rc.name}" for rc in requesting_commands)
             raise InvalidArgumentError(
-                f"The following commands requested a custom Python of {python!r} but none of the "
-                f"configured `[[tool.dev-cmd.python]]` entries apply:\n"
+                f"The following commands requested a custom Python of {venv_config.python!r} but "
+                f"none of the configured `[[tool.dev-cmd.python]]` entries apply:\n"
                 f"{commands}"
             )
-        return venv.ensure(python, python_config, quiet=quiet)
+        return venv.ensure(venv_config=venv_config, python_config=python_config, quiet=quiet)
 
-    if len(pythons_to_requesting_commands) == 1:
-        python, requesting_commands = pythons_to_requesting_commands.popitem()
-        return {python: ensure_venv(python, quiet=False)}
+    if len(venv_configs_to_requesting_commands) == 1:
+        venv_config, requesting_commands = venv_configs_to_requesting_commands.popitem()
+        return {venv_config: ensure_venv(venv_config, quiet=False)}
 
     pool = ThreadPool()
     try:
-        pythons = list(pythons_to_requesting_commands)
+        pythons = list(venv_configs_to_requesting_commands)
         return dict(zip(pythons, pool.map(functools.partial(ensure_venv, quiet=True), pythons)))
     finally:
         pool.close()

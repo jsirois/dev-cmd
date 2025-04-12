@@ -27,6 +27,7 @@ from dev_cmd.model import (
     Python,
     PythonConfig,
     Task,
+    VenvConfig,
 )
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT, Substitution
 from dev_cmd.project import PyProjectToml
@@ -133,6 +134,7 @@ def _parse_commands(
     commands: dict[str, Any] | None,
     required_steps: dict[str, list[tuple[Factor, ...]]],
     project_dir: Path,
+    python: Python | None,
     marker_environment: dict[str, str] | None,
 ) -> Iterator[Command | DeactivatedCommand]:
     if not commands:
@@ -156,6 +158,7 @@ def _parse_commands(
             description = None
             when = None
             python_spec: str | None = None
+            dependency_group: str | None = None
         else:
             command = _assert_dict_str_keys(data, path=f"[tool.dev-cmd.commands.{name}]")
 
@@ -247,6 +250,14 @@ def _parse_commands(
                     f"given: {raw_python} of type {type(raw_python)}."
                 )
             python_spec = raw_python
+
+            raw_dependency_group = command.pop("dependency-group", None)
+            if raw_dependency_group and not isinstance(raw_dependency_group, str):
+                raise InvalidModelError(
+                    f"The [tool.dev-cmd.commands.{name}] `dependency-group` value must be a "
+                    f"string, given: {raw_dependency_group} of type {type(raw_dependency_group)}."
+                )
+            dependency_group = raw_dependency_group
 
             if data:
                 raise InvalidModelError(
@@ -348,11 +359,16 @@ def _parse_commands(
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                     when=when,
-                    python=substituted_python,
+                    python=substituted_python or python,
+                    dependency_group=dependency_group,
                 )
 
             final_name = f"{name}{factors_suffix}"
-            if when and not when.evaluate(marker_environment):
+            if when and not when.evaluate(
+                venv.marker_environment(substituted_python)
+                if substituted_python
+                else marker_environment
+            ):
                 yield DeactivatedCommand(final_name)
             else:
                 previous_original_name = seen_commands.get(final_name)
@@ -376,7 +392,8 @@ def _parse_commands(
                     description=description,
                     factor_descriptions=tuple(seen_factors.values()),
                     when=when,
-                    python=substituted_python,
+                    python=substituted_python or python,
+                    dependency_group=dependency_group,
                 )
 
 
@@ -868,7 +885,9 @@ def _parse_pythons(
                 f"You requested a custom Python of {python} but none of the configured "
                 f"`[[tool.dev-cmd.python]]` entries apply."
             )
-        activated_venv = venv.ensure(python=python, config=activated_python_config)
+        activated_venv = venv.ensure(
+            venv_config=VenvConfig(python=python), python_config=activated_python_config
+        )
 
     return activated_venv, tuple(pythons)
 
@@ -984,6 +1003,7 @@ def parse_dev_config(
         commands_data,
         required_steps,
         project_dir=pyproject_toml.path.parent,
+        python=requested_python,
         marker_environment=marker_environment,
     ):
         existing = commands.setdefault(cmd.name, cmd)

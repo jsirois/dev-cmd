@@ -18,7 +18,7 @@ from dev_cmd import color
 from dev_cmd.color import USE_COLOR
 from dev_cmd.console import Console
 from dev_cmd.errors import ExecutionError, InvalidModelError
-from dev_cmd.model import Command, ExitStyle, Group, Python, Task
+from dev_cmd.model import Command, ExitStyle, Group, Task, VenvConfig
 from dev_cmd.venv import Venv
 
 
@@ -92,7 +92,7 @@ class Invocation:
     grace_period: float
     timings: bool
     venv: Venv | None
-    venvs: Mapping[Python, Venv]
+    venvs: Mapping[VenvConfig, Venv]
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
 
@@ -181,7 +181,9 @@ class Invocation:
 
     def _python_for_command(self, command: Command) -> str:
         if command.python:
-            return self.venvs[command.python].python
+            return self.venvs[
+                VenvConfig(python=command.python, dependency_group=command.dependency_group)
+            ].python
         return self.venv.python if self.venv else sys.executable
 
     async def _invoke_command(
@@ -202,7 +204,12 @@ class Invocation:
         if USE_COLOR and not any(color_env in env for color_env in ("PYTHON_COLORS", "NO_COLOR")):
             env.setdefault("FORCE_COLOR", "1")
         if command.python:
-            self.venvs[command.python].update_path(env)
+            self.venvs[
+                VenvConfig(
+                    python=command.python,
+                    dependency_group=command.dependency_group,
+                )
+            ].update_path(env)
         elif self.venv:
             self.venv.update_path(env)
 

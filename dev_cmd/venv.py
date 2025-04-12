@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -22,7 +23,7 @@ from typing import IO, Any, Dict, Iterator, cast
 
 from dev_cmd import color
 from dev_cmd.errors import DevCmdError
-from dev_cmd.model import Command, Python, PythonConfig, Venv
+from dev_cmd.model import Command, Python, PythonConfig, Venv, VenvConfig
 
 AVAILABLE = False
 
@@ -146,10 +147,10 @@ def marker_environment(python: Python, quiet: bool = False) -> dict[str, str]:
     return cast(Dict[str, str], json.loads(markers_file.read_bytes()))
 
 
-def _fingerprint_python_config(python: Python, config: PythonConfig) -> str:
+def _fingerprint_python_config(venv_config: VenvConfig, python_config: PythonConfig) -> str:
     input_files = {}
     input_paths: dict[str, str] = {}
-    for path in config.cache_key_inputs.paths:
+    for path in python_config.cache_key_inputs.paths:
         input_path = Path(path)
         if input_path.is_file():
             input_files[input_path] = ""
@@ -185,24 +186,27 @@ def _fingerprint_python_config(python: Python, config: PythonConfig) -> str:
     return _fingerprint(
         json.dumps(
             {
-                "python": python.resolve(),
+                "python": venv_config.python.resolve(),
+                "dependency-group": venv_config.dependency_group,
                 "cache-keys": {
-                    "pyproject-data": config.cache_key_inputs.pyproject_data,
+                    "pyproject-data": python_config.cache_key_inputs.pyproject_data,
                     "paths": input_paths,
-                    "env": config.cache_key_inputs.envs,
+                    "env": python_config.cache_key_inputs.envs,
                 },
-                "pip-requirement": config.pip_requirement,
+                "pip-requirement": python_config.pip_requirement,
                 "3rdparty-export-command": extract_command_fingerprint_data(
-                    config.thirdparty_export_command
+                    python_config.thirdparty_export_command
                 ),
-                "3rdparty-pip-install-opts": config.thirdparty_pip_install_opts,
+                "3rdparty-pip-install-opts": python_config.thirdparty_pip_install_opts,
                 "extra-requirements": (
-                    _fingerprint(config.extra_requirements.encode())
-                    if isinstance(config.extra_requirements, str)
-                    else config.extra_requirements
+                    _fingerprint(python_config.extra_requirements.encode())
+                    if isinstance(python_config.extra_requirements, str)
+                    else python_config.extra_requirements
                 ),
-                "extra-requirements-pip-install-opts": config.extra_requirements_pip_install_opts,
-                "finalize-command": extract_command_fingerprint_data(config.finalize_command),
+                "extra-requirements-pip-install-opts": python_config.extra_requirements_pip_install_opts,
+                "finalize-command": extract_command_fingerprint_data(
+                    python_config.finalize_command
+                ),
             },
             sort_keys=True,
         ).encode()
@@ -222,19 +226,45 @@ def _chmod_plus_x(path: Path) -> None:
 
 
 def ensure(
-    python: Python, config: PythonConfig, rebuild_if_needed: bool = True, quiet=False
+    venv_config: VenvConfig,
+    python_config: PythonConfig,
+    rebuild_if_needed: bool = True,
+    quiet: bool = False,
 ) -> Venv:
-    fingerprint = _fingerprint_python_config(python=python, config=config)
+    python = venv_config.python
+
+    env_description = f"--python {python}"
+    if venv_config.dependency_group:
+        env_description = f"{env_description} dependency-group={venv_config.dependency_group}"
+
+    fingerprint = _fingerprint_python_config(venv_config=venv_config, python_config=python_config)
     venv_dir = _ensure_cache_dir() / "venvs" / fingerprint
     layout_file = venv_dir / ".dev-cmd-venv-layout.json"
     if not os.path.exists(venv_dir):
         with FileLock(f"{venv_dir}.lck"):
             if not os.path.exists(venv_dir):
                 print(
-                    f"{color.yellow(f'Setting up venv for --python {python}')}...", file=sys.stderr
+                    f"{color.yellow(f'Setting up venv for {env_description}')}...", file=sys.stderr
                 )
                 work_dir = Path(f"{venv_dir}.work")
                 venv_layout = _create_venv(python.resolve(), venv_dir=fspath(work_dir))
+
+                thirdparty_export_command_args: list[str] = []
+                for arg in python_config.thirdparty_export_command.args:
+                    match = re.match(r"^\{dependency-group(?::(?P<default>.*))?}$", arg)
+                    if not match:
+                        thirdparty_export_command_args.append(arg)
+                    elif venv_config.dependency_group:
+                        thirdparty_export_command_args.append(venv_config.dependency_group)
+                    else:
+                        default_dependency_group = match.group("default")
+                        if not default_dependency_group:
+                            raise DevCmdError(
+                                f"A [[tool.dev-cmd.python]] configuration uses {arg} and no "
+                                f"default dependency-group was set."
+                            )
+                        thirdparty_export_command_args.append(default_dependency_group)
+
                 with _named_temporary_file(
                     tmp_dir=fspath(work_dir), prefix="3rdparty-reqs."
                 ) as reqs_fp:
@@ -242,13 +272,13 @@ def ensure(
 
                     requirements_export_command_args = [
                         (reqs_fp.name if arg == "{requirements.txt}" else arg)
-                        for arg in config.thirdparty_export_command.args
+                        for arg in thirdparty_export_command_args
                     ]
                     env = os.environ.copy()
-                    env.update(config.thirdparty_export_command.extra_env)
+                    env.update(python_config.thirdparty_export_command.extra_env)
                     subprocess.run(
                         args=requirements_export_command_args,
-                        cwd=config.thirdparty_export_command.cwd,
+                        cwd=python_config.thirdparty_export_command.cwd,
                         env=env,
                         check=True,
                     )
@@ -262,7 +292,7 @@ def ensure(
                             "pip",
                             "install",
                             "-U",
-                            config.pip_requirement,
+                            python_config.pip_requirement,
                         ],
                         stdout=pip_stdout,
                         stderr=pip_stderr,
@@ -270,40 +300,40 @@ def ensure(
                     )
                     subprocess.run(
                         args=[venv_layout.python, "-m", "pip", "install"]
-                        + list(config.thirdparty_pip_install_opts)
+                        + list(python_config.thirdparty_pip_install_opts)
                         + ["-r", reqs_fp.name],
                         stdout=pip_stdout,
                         stderr=pip_stderr,
                         check=True,
                     )
 
-                if config.extra_requirements:
+                if python_config.extra_requirements:
 
                     @contextmanager
                     def _extra_requirements_args() -> Iterator[list[str]]:
-                        if isinstance(config.extra_requirements, str):
+                        if isinstance(python_config.extra_requirements, str):
                             with _named_temporary_file(
                                 tmp_dir=fspath(work_dir), prefix="extra-reqs."
                             ) as fp:
-                                fp.write(config.extra_requirements.encode())
+                                fp.write(python_config.extra_requirements.encode())
                                 fp.close()
                                 yield ["-r", fp.name]
                         else:
-                            yield list(config.extra_requirements)
+                            yield list(python_config.extra_requirements)
 
                     with _extra_requirements_args() as extra_requirements_args:
                         subprocess.run(
                             args=[venv_layout.python, "-m", "pip", "install"]
-                            + list(config.extra_requirements_pip_install_opts)
+                            + list(python_config.extra_requirements_pip_install_opts)
                             + extra_requirements_args,
                             stdout=pip_stdout,
                             stderr=pip_stderr,
                             check=True,
                         )
 
-                if config.finalize_command:
+                if python_config.finalize_command:
                     finalize_command_args: list[str] = []
-                    for arg in config.finalize_command.args:
+                    for arg in python_config.finalize_command.args:
                         if arg == "{venv-python}":
                             finalize_command_args.append(venv_layout.python)
                         elif arg == "{venv-site-packages}":
@@ -311,10 +341,10 @@ def ensure(
                         else:
                             finalize_command_args.append(arg)
                     env = os.environ.copy()
-                    env.update(config.finalize_command.extra_env)
+                    env.update(python_config.finalize_command.extra_env)
                     subprocess.run(
                         args=finalize_command_args,
-                        cwd=config.finalize_command.cwd,
+                        cwd=python_config.finalize_command.cwd,
                         env=env,
                         check=True,
                     )
@@ -360,7 +390,7 @@ def ensure(
         data = json.load(in_fp)
 
     print(
-        color.color(f"Using venv at {venv_dir} for --python {python}.", fg="gray"), file=sys.stderr
+        color.color(f"Using venv at {venv_dir} for {env_description}.", fg="gray"), file=sys.stderr
     )
     try:
         return Venv(
@@ -376,4 +406,4 @@ def ensure(
             file=sys.stderr,
         )
         shutil.rmtree(venv_dir)
-        return ensure(python=python, config=config, rebuild_if_needed=False)
+        return ensure(venv_config=venv_config, python_config=python_config, rebuild_if_needed=False)
