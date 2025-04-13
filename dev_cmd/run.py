@@ -8,7 +8,6 @@ import dataclasses
 import functools
 import itertools
 import os
-import shlex
 import sys
 import time
 from argparse import ArgumentParser
@@ -119,7 +118,7 @@ def _run(
     console: Console = Console(),
     parallel: bool = False,
     timings: bool = False,
-    extra_args: Iterable[str] = (),
+    extra_args: tuple[str, ...] = (),
     exit_style_override: ExitStyle | None = None,
     grace_period_override: float | None = None,
 ) -> None:
@@ -146,9 +145,10 @@ def _run(
             invocation = Invocation.create(
                 *(available_tasks.get(step) or available_cmds[step] for step in steps),
                 skips=skips,
-                console=console,
                 grace_period=grace_period,
+                extra_args=extra_args,
                 timings=timings,
+                console=console,
             )
         except KeyError as e:
             print(e, file=sys.stderr)
@@ -166,9 +166,10 @@ def _run(
         invocation = Invocation.create(
             config.default,
             skips=skips,
-            console=console,
             grace_period=grace_period,
+            extra_args=extra_args,
             timings=timings,
+            console=console,
         )
     else:
         raise InvalidArgumentError(
@@ -180,12 +181,6 @@ def _run(
                     f"Available commands: {' '.join(sorted(cmd.name for cmd in config.commands))}",
                 )
             )
-        )
-
-    if extra_args and not invocation.accepts_extra_args:
-        raise InvalidArgumentError(
-            f"The following extra args were passed but none of the selected commands accept extra "
-            f"arguments: {shlex.join(extra_args)}"
         )
 
     if not tuple(invocation.iter_commands()):

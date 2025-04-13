@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.30.2
+
+Fix command `accepts-extra-args` handling. If multiple different commands that accept extra args are
+run together, only error if extra args are actually passed; otherwise, allow the invocation to
+proceed.
+
 ## 0.30.1
 
 Fix a bug when using command dependency groups that would always also build the default venv even

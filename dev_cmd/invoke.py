@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import sys
 import time
 from asyncio import CancelledError
@@ -17,7 +18,7 @@ from typing import Any, AsyncIterator, Container, Iterator, Mapping
 from dev_cmd import color
 from dev_cmd.color import USE_COLOR
 from dev_cmd.console import Console
-from dev_cmd.errors import ExecutionError, InvalidModelError
+from dev_cmd.errors import ExecutionError, InvalidArgumentError, InvalidModelError
 from dev_cmd.model import Command, ExitStyle, Group, Task, VenvConfig
 from dev_cmd.venv import Venv
 
@@ -47,37 +48,43 @@ class Invocation:
         *steps: Command | Task,
         skips: Container[str],
         grace_period: float,
+        extra_args: tuple[str, ...] | None = None,
         timings: bool = False,
         console: Console = Console(),
     ) -> Invocation:
-        accepts_extra_args: Command | None = None
-        for step in steps:
-            if step.name in skips:
-                continue
-            if isinstance(step, Command):
-                if not step.accepts_extra_args:
+        if extra_args:
+            accepts_extra_args: Command | None = None
+            for step in steps:
+                if step.name in skips:
                     continue
-                if accepts_extra_args and accepts_extra_args not in (step.base, step):
-                    raise InvalidModelError(
-                        f"The command {step.name!r} accepts extra args, but only one command can "
-                        f"accept extra args per invocation and command "
-                        f"{accepts_extra_args.name!r} already does."
-                    )
-                accepts_extra_args = step.base or step
-            elif commands := tuple(step.accepts_extra_args(skips)):
-                for command in commands:
-                    if accepts_extra_args and accepts_extra_args not in (command.base, command):
+                if isinstance(step, Command):
+                    if not step.accepts_extra_args:
+                        continue
+                    if accepts_extra_args and accepts_extra_args not in (step.base, step):
                         raise InvalidModelError(
-                            f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
-                            f"args, but only one command can accept extra args per invocation and command "
+                            f"The command {step.name!r} accepts extra args, but only one command can "
+                            f"accept extra args per invocation and command "
                             f"{accepts_extra_args.name!r} already does."
                         )
-                    accepts_extra_args = command.base or command
+                    accepts_extra_args = step.base or step
+                elif commands := tuple(step.accepts_extra_args(skips)):
+                    for command in commands:
+                        if accepts_extra_args and accepts_extra_args not in (command.base, command):
+                            raise InvalidModelError(
+                                f"The task {step.name!r} invokes command {command.name!r} which accepts extra "
+                                f"args, but only one command can accept extra args per invocation and command "
+                                f"{accepts_extra_args.name!r} already does."
+                            )
+                        accepts_extra_args = command.base or command
+            if not accepts_extra_args:
+                raise InvalidArgumentError(
+                    f"The following extra args were passed but none of the selected commands accept extra "
+                    f"arguments: {shlex.join(extra_args)}"
+                )
 
         return cls(
             steps=tuple(step for step in steps if step.name not in skips),
             skips=skips,
-            accepts_extra_args=accepts_extra_args is not None,
             grace_period=grace_period,
             timings=timings,
             venvs={},
@@ -86,7 +93,6 @@ class Invocation:
 
     steps: tuple[Command | Task, ...]
     skips: Container[str]
-    accepts_extra_args: bool
     grace_period: float
     timings: bool
     venvs: Mapping[VenvConfig, Venv]
