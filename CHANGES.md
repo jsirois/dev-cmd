@@ -1,22 +1,21 @@
 # Release Notes
 
-## 0.30.0-WIP
+## 0.30.0
 
 Add support for varying `--python` venvs based on the command being run under the requested
 `--python`. This is done by specifying the `dependency-group` the command needs and then
 parametrizing the `[[tool.dev-cmd.python]] 3rdparty-export-command` with the `"{dependency-group}"`
 placeholder as appropriate.
 
-Add support for command arguments that are discarded is they evaluate to the empty string after
+This release also improves command parameterization with several new features:
++ Add support for command arguments that are discarded is they evaluate to the empty string after
 processing parameter substitutions. These args just need to be wrapped in `{discard_empty = "..."}`
 single-item objects.
-
-Add special support for `-py` factors in command `python`. To indicate a PyPy implementation instead
++ Add special support for `-py` factors in command `python`. To indicate a PyPy implementation instead
 of CPython, you can just pass `py` for the factor value; so `-pypy` Maps to PyPy of any version,
 `-pypy3` maps to a PyPy with major version 3, and `-pypy310` or `-pypy3.10` maps to a PyPy with
 version 3.10.
-
-Add support for flag factors in the form `{-name?flag_value:default_value}` that allow the presence
++ Add support for flag factors in the form `{-name?flag_value:default_value}` that allow the presence
 of `-name` in a command name to pass `flag_value` and the absence to pass `default_value`.
 
 ## 0.29.0

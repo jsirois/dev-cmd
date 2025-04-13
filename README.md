@@ -139,6 +139,14 @@ variable if defined and finally falling back to `python_version` if none of thes
 The available Python marker environment variables are detailed in [PEP-508](
 https://peps.python.org/pep-0508/#environment-markers).
 
+Command arguments can be elided from the list when their value is parameterized and evaluates to
+empty by wrapping the argument in a single-item `{discard_empty = "..."}` table. For example,
+debug flags could be passed to pytest via the `DEBUG` env var, but only when present, with:
+```toml
+[tool.dev-cmd.commands]
+pytest = ["python", "-m", "pytest", {discard_empty = "{env.DEBUG:"}]
+```
+
 Factors are introduced as suffixes to command names and are inspired by and similar to those found
 in [tox](https://tox.wiki/) configuration. If a command is named `test` but the command is invoked
 as `test-py3.12`, the `-py3.12` factor will be defined. The value of `3.12` could then be read via
@@ -151,6 +159,39 @@ as the value for the `-py` factor parameter. The colon-prefix helps distinguish 
 factor value, paralleling the default value syntax that can be used at factor parameter declaration
 sites. If your factor value contains a `-`, just escape it with a `-`; i.e.: `--` will map to a
 single `-` in a factor value instead of indicating a new factor starts there.
+
+There are two special forms of factors to be aware of: flag factors for passing one value or another
+conditionally and the `py` factor when used as the value of a command python.
+
+An example of a flag factor is `{-color?--color=always:--color=auto}`. Here the factor name is
+`color` and, when present as a command suffix, it evaluates to `--color-always`. When the factor is
+absent from the command name, it evaluates to `--color=auto`. Re-visiting the `discard_empty`
+example above, you might more usefully parameterize pytest debugging with:
+```toml
+[tool.dev-cmd.commands]
+pytest = ["python", "-m", "pytest", {discard_empty = "{-debug?--pdb:"}]
+```
+
+Instead of having to say `DEBUG=--pdb uv run dev-cmd pytest` you can say
+`uv run dev-cmd pytest-debug`. This has the advantage of being discoverable via `--list` and sealing
+in the correct debugger flag for pytest.
+
+The other special form if the factor named `py` when used as the value for a command python. For
+example:
+```toml
+[tool.dev-cmd.commands.query]
+python = "{-py:}"
+args = ["scripts/query.py"]
+```
+
+Here, executing `uv run dev-cmd query-python3.8` will run the query script with Python 3.8. This
+is just standard factor substitution at work. However, you can also say: `query-py3.8` or even
+`query-py38` with the same result. Namely, for a command python, the `py` factor has special value
+handling that will add the `python` prefix for you if you just supply the version number or even
+just the version digits. PyPy is also supported. Instead of using the awkward `query-py:pypy` or
+`query-pypypy`, you can use `query-pypy`. The `py` factor value gets expanded to `pypy`. This also
+works with the version number handling; so you can say `query-pypy310` to pass `pypy3.10` as the
+query script Python to use.
 
 #### Documentation
 
@@ -414,10 +455,50 @@ the venv cache key and just rely on the contents of `uv.lock`, which is what the
 powered by:
 ```toml
 [tool.dev-cmd.python.requirements]
-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
+3rdparty-export-command = ["uv", "export", "-q", "--no-emit-project", "-o", "{requirements.txt}"]
 pyproject-cache-keys = []
 extra-cache-keys = ["uv.lock"]
 ```
+
+If you need to vary the venv contents based on the command being run you can specify which
+dependency-group the command needs and then have your export command respect this value. For
+example:
+```toml
+[dependency-groups]
+dev = [
+   "dev-cmd[old-pythons]",
+   "mypy",
+   "ruff",
+   {include = "test"}
+]
+test = ["pytest"]
+
+[tool.dev-cmd.commands]
+fmt = ["ruff", "format"]
+lint = ["ruff", "check", "--fix"]
+type-check = ["mypy", "--python", "{-py:{markers.python_version}}"]
+
+[tool.dev-cmd.commands.test]
+args = ["pytest"]
+cwd = "tests"
+accepts-extra-args = true
+dependency-group = "test"
+
+[tool.dev-cmd.python.requirements]
+3rdparty-export-command = [
+   "uv", "export", "-q",
+   "--no-emit-project",
+   "--only-group", "{dependency-group:dev}",
+   "-o", "{requirements.txt}"
+]
+pyproject-cache-keys = []
+extra-cache-keys = ["uv.lock"]
+```
+
+Here, the export command uses the special `{dependency-group:default}` placeholder to ensure
+`uv run dev-cmd --py 38 fmt lint type-check test` creates a Python 3.8 venv populated by the "test"
+dependency group to run pytest in and a default Python 3.8 venv populated with everything in the
+"dev" dependency group to run everything else in.
 
 ## Execution
 
