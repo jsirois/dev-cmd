@@ -149,7 +149,6 @@ def _run(
                 console=console,
                 grace_period=grace_period,
                 timings=timings,
-                venv=config.venv,
             )
         except KeyError as e:
             print(e, file=sys.stderr)
@@ -170,7 +169,6 @@ def _run(
             console=console,
             grace_period=grace_period,
             timings=timings,
-            venv=config.venv,
         )
     else:
         raise InvalidArgumentError(

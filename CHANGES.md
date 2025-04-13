@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.30.1
+
+Fix a bug when using command dependency groups that would always also build the default venv even
+when just a command with a custom dependency group was being run.
+
 ## 0.30.0
 
 Add support for varying `--python` venvs based on the command being run under the requested

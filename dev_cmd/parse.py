@@ -27,11 +27,9 @@ from dev_cmd.model import (
     Python,
     PythonConfig,
     Task,
-    VenvConfig,
 )
 from dev_cmd.placeholder import DEFAULT_ENVIRONMENT, Substitution
 from dev_cmd.project import PyProjectToml
-from dev_cmd.venv import Venv
 
 
 def _assert_list_str(obj: Any, *, path: str) -> list[str]:
@@ -853,7 +851,7 @@ def select_python_config(
 
 def _parse_pythons(
     python: Python | None, python_config_data: Any, pyproject_data: dict[str, Any]
-) -> tuple[Venv | None, tuple[PythonConfig, ...]]:
+) -> tuple[dict[str, str] | None, tuple[PythonConfig, ...]]:
     if python and not python_config_data:
         raise InvalidArgumentError(
             f"You requested a custom Python of {python} but have not configured any "
@@ -877,19 +875,9 @@ def _parse_pythons(
             else _parse_python(index, python_data, pyproject_data, defaults=defaults)
         )
 
-    activated_venv: Venv | None = None
-    if python:
-        activated_python_config = select_python_config(python, pythons)
-        if not activated_python_config:
-            raise InvalidArgumentError(
-                f"You requested a custom Python of {python} but none of the configured "
-                f"`[[tool.dev-cmd.python]]` entries apply."
-            )
-        activated_venv = venv.ensure(
-            venv_config=VenvConfig(python=python), python_config=activated_python_config
-        )
+    marker_environment = venv.marker_environment(python) if python else None
 
-    return activated_venv, tuple(pythons)
+    return marker_environment, tuple(pythons)
 
 
 def _iter_all_required_step_names(
@@ -934,14 +922,11 @@ def parse_dev_config(
             f"[tool.dev-cmd] table in {pyproject_toml}: {e}"
         )
 
-    marker_environment: dict[str, str] | None = None
-    python_venv, pythons = _parse_pythons(
+    marker_environment, pythons = _parse_pythons(
         python=requested_python,
         python_config_data=dev_cmd_data.pop("python", None),
         pyproject_data=pyproject_data,
     )
-    if python_venv:
-        marker_environment = dict(python_venv.marker_environment)
 
     def pop_dict(key: str, *, path: str) -> dict[str, Any] | None:
         data = dev_cmd_data.pop(key, None)
@@ -1034,7 +1019,6 @@ def parse_dev_config(
         default=default,
         exit_style=exit_style,
         grace_period=grace_period,
-        venv=python_venv,
         pythons=pythons,
         source=pyproject_toml.path,
     )

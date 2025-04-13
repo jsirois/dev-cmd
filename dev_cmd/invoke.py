@@ -48,7 +48,6 @@ class Invocation:
         skips: Container[str],
         grace_period: float,
         timings: bool = False,
-        venv: Venv | None = None,
         console: Console = Console(),
     ) -> Invocation:
         accepts_extra_args: Command | None = None
@@ -81,7 +80,6 @@ class Invocation:
             accepts_extra_args=accepts_extra_args is not None,
             grace_period=grace_period,
             timings=timings,
-            venv=venv,
             venvs={},
             console=console,
         )
@@ -91,7 +89,6 @@ class Invocation:
     accepts_extra_args: bool
     grace_period: float
     timings: bool
-    venv: Venv | None
     venvs: Mapping[VenvConfig, Venv]
     console: Console
     _in_flight_processes: dict[Process, Command] = field(default_factory=dict, init=False)
@@ -184,7 +181,7 @@ class Invocation:
             return self.venvs[
                 VenvConfig(python=command.python, dependency_group=command.dependency_group)
             ].python
-        return self.venv.python if self.venv else sys.executable
+        return sys.executable
 
     async def _invoke_command(
         self, command: Command, *extra_args, **subprocess_kwargs: Any
@@ -210,8 +207,6 @@ class Invocation:
                     dependency_group=command.dependency_group,
                 )
             ].update_path(env)
-        elif self.venv:
-            self.venv.update_path(env)
 
         if args[0].endswith(".py"):
             args.insert(0, self._python_for_command(command))

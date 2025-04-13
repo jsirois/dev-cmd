@@ -160,6 +160,5 @@ class Configuration:
     default: Command | Task | None = None
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
-    venv: Venv | None = None
     pythons: tuple[PythonConfig, ...] = ()
     source: Any = "<code>"
