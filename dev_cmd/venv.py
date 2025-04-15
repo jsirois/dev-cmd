@@ -373,7 +373,7 @@ def ensure(
                                 shebang.replace(work_dir_path_bytes, venv_dir_path_bytes)
                             )
                             shutil.copyfileobj(candidate_fp, rewrite_fp)
-                    rewrite_target.rename(candidate_console_script)
+                    rewrite_target.replace(candidate_console_script)
                     _chmod_plus_x(candidate_console_script)
 
                 with (work_dir / layout_file.name).open("w") as out_fp:

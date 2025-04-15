@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.30.3
+
+Fix `--py` / `--python` venv creation on Windows.
+
 ## 0.30.2
 
 Fix command `accepts-extra-args` handling. If multiple different commands that accept extra args are
