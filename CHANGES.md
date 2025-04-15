@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.31.0
+
+Add support for a `{--hashseed}` placeholder that is substituted with the value passed to `dev-cmd`
+via `--hashseed` or else a random value suitable for use in PYTHONHASHSEED.
+
 ## 0.30.3
 
 Fix `--py` / `--python` venv creation on Windows.

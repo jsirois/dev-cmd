@@ -125,13 +125,15 @@ args = ["scripts/query-windows-registry.py"]
 
 A command's python, arguments and env values can be parameterized with values from the execution
 environment. Parameters are introduced in between brackets with an optional default value:
-`{<key>(:<default>)?}`. Parameters can draw from three sources:
+`{<key>(:<default>)?}`. Parameters can draw from four sources:
 1. Environment variables via `{env.<name>}`; e.g.: `{env.HOME}`
 2. The current Python interpreter's marker environment via `{markers.<name>}`; e.g.:
    `{markers.python_version}`
 3. Factors via `{-<name>}`; e.g.: `{-py:{markers.python_version}}`
+4. A hash seed via `{--hashseed}`. The value comes from `dev-cmd --hashseed` if passed; otherwise a
+   random hash seed suitable for use with `PYTHONHASHSEED` is generated.
 
-In all three cases, the parameter name can itself come from a nested parameterization; e.g.:
+In the first three cases, the parameter name can itself come from a nested parameterization; e.g.:
 `{markers.{-marker:{env.MARKER:python_version}}}` selects the environment marker value for the
 environment marker named by the `marker` factor if defined; otherwise the `MARKER` environment
 variable if defined and finally falling back to `python_version` if none of these are defined.

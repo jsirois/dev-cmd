@@ -59,6 +59,7 @@ class Environment(Substituter[State, str]):
     markers: Mapping[str, str] = field(
         default_factory=cast(Callable[[], Mapping[str, str]], markers.default_environment)
     )
+    hashseed: int = 0
 
     def substitute(self, text: str, *factors: Factor) -> Substitution:
         state = State(factors)
@@ -84,7 +85,14 @@ class Environment(Substituter[State, str]):
             )
         default = deflt if sep else None
         value: str | None
-        if key.startswith("-"):
+        if key == "--hashseed":
+            if default is not None:
+                raise ValueError(
+                    f"The {{--hashseed}} placeholder does not accept a default. Found placeholder: "
+                    f"{{{symbol}}}"
+                )
+            value = str(self.hashseed)
+        elif key.startswith("-"):
             flag, flag_sep, rest = symbol.partition("?")
             if flag_sep:
                 substitution = self.substitute(rest)

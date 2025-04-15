@@ -28,7 +28,7 @@ from dev_cmd.model import (
     PythonConfig,
     Task,
 )
-from dev_cmd.placeholder import DEFAULT_ENVIRONMENT, Substitution
+from dev_cmd.placeholder import Environment, Substitution
 from dev_cmd.project import PyProjectToml
 
 
@@ -134,6 +134,7 @@ def _parse_commands(
     project_dir: Path,
     python: Python | None,
     marker_environment: dict[str, str] | None,
+    placeholder_env: Environment,
 ) -> Iterator[Command | DeactivatedCommand]:
     if not commands:
         raise InvalidModelError(
@@ -270,7 +271,7 @@ def _parse_commands(
             used_factors: set[Factor] = set()
 
             def substitute(text: str) -> Substitution:
-                substitution = DEFAULT_ENVIRONMENT.substitute(text, *factors)
+                substitution = placeholder_env.substitute(text, *factors)
                 seen_factors.update(
                     (
                         seen_factor.factor,
@@ -909,7 +910,10 @@ def _gather_all_required_step_names(
 
 
 def parse_dev_config(
-    pyproject_toml: PyProjectToml, *requested_steps: str, requested_python: Python | None = None
+    pyproject_toml: PyProjectToml,
+    *requested_steps: str,
+    placeholder_env: Environment,
+    requested_python: Python | None = None,
 ) -> tuple[Configuration, tuple[str, ...]]:
     pyproject_data = pyproject_toml.parse()
     try:
@@ -990,6 +994,7 @@ def parse_dev_config(
         project_dir=pyproject_toml.path.parent,
         python=requested_python,
         marker_environment=marker_environment,
+        placeholder_env=placeholder_env,
     ):
         existing = commands.setdefault(cmd.name, cmd)
         if isinstance(existing, DeactivatedCommand) and isinstance(cmd, Command):

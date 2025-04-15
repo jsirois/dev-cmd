@@ -16,6 +16,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from typing import Any, Collection, DefaultDict, Iterable, Iterator, Mapping
+from uuid import uuid4
 
 from dev_cmd import __version__, color, parse, venv
 from dev_cmd.color import ColorChoice
@@ -35,7 +36,7 @@ from dev_cmd.model import (
     VenvConfig,
 )
 from dev_cmd.parse import parse_dev_config
-from dev_cmd.placeholder import DEFAULT_ENVIRONMENT
+from dev_cmd.placeholder import Environment
 from dev_cmd.project import find_pyproject_toml
 
 DEFAULT_EXIT_STYLE = ExitStyle.AFTER_STEP
@@ -208,10 +209,17 @@ class Options:
     quiet: bool
     parallel: bool
     timings: bool
+    hashseed: int
     extra_args: tuple[str, ...]
     python: str | None = None
     exit_style: ExitStyle | None = None
     grace_period: float | None = None
+
+
+def _random_hashseed() -> int:
+    # The PYTHONHASHSEED is an integer in the range 0 to 4294967295. We use the time_low field of
+    # the UUID which is 32 bits.
+    return min(4294967295, uuid4().time_low)
 
 
 def _parse_args() -> Options:
@@ -262,6 +270,12 @@ def _parse_args() -> Options:
         "--timings",
         action="store_true",
         help="Emit timing information for each command run.",
+    )
+    parser.add_argument(
+        "--hashseed",
+        type=int,
+        default=_random_hashseed(),
+        help="Set the {--hashseed} command placeholder value.",
     )
 
     if venv.AVAILABLE:
@@ -373,6 +387,7 @@ def _parse_args() -> Options:
         quiet=options.quiet,
         parallel=parallel,
         timings=options.timings,
+        hashseed=options.hashseed,
         extra_args=tuple(extra_args) if extra_args is not None else (),
         python=getattr(options, "python", None),
         exit_style=options.exit_style,
@@ -383,6 +398,7 @@ def _parse_args() -> Options:
 def _list(
     console,  # type: Console
     config,  # type: Configuration
+    placeholder_env,  # type: Environment
 ):
     # type: (...) -> Any
 
@@ -423,11 +439,11 @@ def _list(
             extra_info = ""
             if flag_value is not None:
                 extra_info = f"{flag_value} "
-                substituted_flag_value = DEFAULT_ENVIRONMENT.substitute(flag_value).value
+                substituted_flag_value = placeholder_env.substitute(flag_value).value
                 if substituted_flag_value != flag_value:
                     extra_info += f"(currently {substituted_flag_value}) "
             if default is not None:
-                substituted_default = DEFAULT_ENVIRONMENT.substitute(default).value
+                substituted_default = placeholder_env.substitute(default).value
                 if substituted_default != default:
                     extra_info += f"[default: {default} (currently {substituted_default})]"
                 else:
@@ -476,14 +492,17 @@ def main() -> Any:
     options = _parse_args()
     console = Console(quiet=options.quiet)
     python = Python(options.python) if options.python else None
+    placeholder_env = Environment(hashseed=options.hashseed)
     try:
         pyproject_toml = find_pyproject_toml()
-        config, steps = parse_dev_config(pyproject_toml, *options.steps, requested_python=python)
+        config, steps = parse_dev_config(
+            pyproject_toml, *options.steps, placeholder_env=placeholder_env, requested_python=python
+        )
     except DevCmdError as e:
         return 1 if console.quiet else f"{color.red('Configuration error')}: {color.yellow(str(e))}"
 
     if options.list:
-        return _list(console, config)
+        return _list(console, config, placeholder_env)
 
     success = False
     try:

@@ -14,6 +14,7 @@ from packaging.markers import Marker
 from dev_cmd.errors import InvalidModelError
 from dev_cmd.model import Command, Configuration, Group, Task
 from dev_cmd.parse import parse_dev_config
+from dev_cmd.placeholder import Environment
 from dev_cmd.project import PyProjectToml
 
 
@@ -26,7 +27,9 @@ def parse_config(tmp_path: Path) -> Iterator[ConfigurationParser]:
     def parse(content: str, *requested_steps: str) -> Configuration:
         pyproject_toml = tmp_path / "pyproject.toml"
         pyproject_toml.write_text(content)
-        return parse_dev_config(PyProjectToml(pyproject_toml), *requested_steps)[0]
+        return parse_dev_config(
+            PyProjectToml(pyproject_toml), *requested_steps, placeholder_env=Environment(hashseed=0)
+        )[0]
 
     yield parse
 

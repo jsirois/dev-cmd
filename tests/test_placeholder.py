@@ -1,6 +1,5 @@
 # Copyright 2025 John Sirois.
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
-
 import re
 import sys
 
@@ -8,12 +7,12 @@ import pytest
 from packaging.markers import default_environment
 
 from dev_cmd.model import Factor
-from dev_cmd.placeholder import DEFAULT_ENVIRONMENT, Environment, SeenFactor, Substitution
+from dev_cmd.placeholder import Environment, SeenFactor, Substitution
 
 
 @pytest.fixture
 def env() -> Environment:
-    return DEFAULT_ENVIRONMENT
+    return Environment()
 
 
 def substitute(env: Environment, text: str) -> str:
@@ -126,3 +125,17 @@ def test_substitute_intra_recursive() -> None:
         seen_factors=[SeenFactor(Factor("py"))],
         used_factors=[Factor("py{markers.{env.USE_MARKER}}")],
     ) == env.substitute("{-{env.USE_FACTOR}}", Factor("py{markers.{env.USE_MARKER}}"))
+
+
+def test_substitute_hashseed() -> None:
+    env = Environment(hashseed=42)
+    assert Substitution.create("42") == env.substitute("{--hashseed}")
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "The {--hashseed} placeholder does not accept a default. Found placeholder: "
+            "{--hashseed:137}"
+        ),
+    ):
+        env.substitute("{--hashseed:137}")

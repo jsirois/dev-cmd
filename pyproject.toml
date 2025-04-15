@@ -125,6 +125,7 @@ dependency-group = "type-check"
 
 [tool.dev-cmd.commands.test]
 python = "{-py:}"
+env = {"PYTHONHASHSEED" = "{--hashseed}"}
 args = ["pytest"]
 cwd = "tests"
 accepts-extra-args = true
