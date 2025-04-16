@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.31.1
+
+Fix venv creation to use the newest Pip possible given the target python.
+
 ## 0.31.0
 
 Add support for a `{--hashseed}` placeholder that is substituted with the value passed to `dev-cmd`
