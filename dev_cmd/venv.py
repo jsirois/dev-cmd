@@ -367,15 +367,35 @@ def ensure(
                         if candidate_fp.read(2) != b"#!":
                             continue
                         shebang = candidate_fp.readline()
-                        if not shebang.startswith(work_dir_path_bytes):
+                        if shebang != b"/bin/sh\n" and not shebang.startswith(work_dir_path_bytes):
                             continue
+
                         rewrite_target = candidate_console_script.with_suffix(".rewrite")
                         with rewrite_target.open("wb") as rewrite_fp:
                             rewrite_fp.write(b"#!")
-                            rewrite_fp.write(
-                                shebang.replace(work_dir_path_bytes, venv_dir_path_bytes)
-                            )
-                            shutil.copyfileobj(candidate_fp, rewrite_fp)
+                            if shebang.startswith(work_dir_path_bytes):
+                                rewrite_fp.write(
+                                    shebang.replace(work_dir_path_bytes, venv_dir_path_bytes)
+                                )
+                                shutil.copyfileobj(candidate_fp, rewrite_fp)
+                            else:
+                                # N.B.: Scripts with too-long shebangs will use the `#!/bin/sh` trick.
+                                # Like so:
+                                # #!/bin/sh
+                                # # N.B.: This python script executes via a /bin/sh re-exec as a hack to work around a
+                                # # potential maximum shebang length of 128 bytes on this system which
+                                # # the python interpreter `exec`ed below would violate.
+                                # ''''exec /too/long/lead-in/path/.dev-cmd/venvs/Dik2FlYfLsaDdskunQh_vGTlBS1My7KattEsxC0M9-k.work/bin/python2.7 "$0" "$@"
+                                # '''
+                                # # -*- coding: utf-8 -*-
+                                # import importlib
+                                # ...
+                                rewrite_fp.write(shebang)
+                                rewrite_fp.write(
+                                    candidate_fp.read().replace(
+                                        work_dir_path_bytes, venv_dir_path_bytes, 1
+                                    )
+                                )
                     rewrite_target.replace(candidate_console_script)
                     _chmod_plus_x(candidate_console_script)
 

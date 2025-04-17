@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.32.2
+
+Fix venv creation to handle `#!/bin/sh` re-director script re-writes. These are Python scripts with
+`#!/bin/sh` re-director headers that work around shebang-length limitations.
+
 ## 0.31.1
 
 Fix venv creation to use the newest Pip possible given the target python.
