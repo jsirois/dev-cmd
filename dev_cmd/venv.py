@@ -412,21 +412,27 @@ def ensure(
     with layout_file.open() as in_fp:
         data = json.load(in_fp)
 
-    print(
-        color.color(f"Using venv at {venv_dir} for {env_description}.", fg="gray"), file=sys.stderr
-    )
-    try:
-        return Venv(
-            dir=venv_dir.as_posix(),
-            python=data["python"],
-            marker_environment=data["marker-environment"],
-        )
-    except KeyError:
-        if not rebuild_if_needed:
-            raise
+    def rebuild():
         print(
             color.yellow(f"Venv for --python {python} at {venv_dir} is out of date, rebuilding."),
             file=sys.stderr,
         )
         shutil.rmtree(venv_dir)
         return ensure(venv_config=venv_config, python_config=python_config, rebuild_if_needed=False)
+
+    print(
+        color.color(f"Using venv at {venv_dir} for {env_description}.", fg="gray"), file=sys.stderr
+    )
+    try:
+        venv = Venv(
+            dir=venv_dir.as_posix(),
+            python=data["python"],
+            marker_environment=data["marker-environment"],
+        )
+        if not venv.is_valid():
+            return rebuild()
+        return venv
+    except KeyError:
+        if not rebuild_if_needed:
+            raise
+        return rebuild()

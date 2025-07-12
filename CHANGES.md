@@ -1,6 +1,10 @@
 # Release Notes
 
-## 0.32.2
+## 0.31.3
+
+Fix venv creation to detect corrupted venvs (via system Python upgrades or un-installs).
+
+## 0.31.2
 
 Fix venv creation to handle `#!/bin/sh` re-director script re-writes. These are Python scripts with
 `#!/bin/sh` re-director headers that work around shebang-length limitations.

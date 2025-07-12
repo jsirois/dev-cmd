@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePath
@@ -145,6 +146,11 @@ class Venv:
     def update_path(self, env: MutableMapping[str, str]) -> None:
         path = env.pop("PATH", None)
         env["PATH"] = (self.bin_path + os.pathsep + path) if path else self.bin_path
+
+    def is_valid(self) -> bool:
+        if not os.path.isfile(self.python):
+            return False
+        return "win32" == sys.platform or os.access(self.python, os.R_OK | os.X_OK)
 
 
 @dataclass(frozen=True)
