@@ -1,6 +1,7 @@
 [build-system]
 requires = ["setuptools"]
-backend = "setuptools.build_meta"
+backend-path = ["build-backend", ""]
+build-backend = "dev_cmd_build.setuptools.build"
 
 [project]
 name = "dev-cmd"
@@ -19,13 +20,13 @@ authors = [
 ]
 description = "A simple development command runner for Python projects."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 keywords = ["automation", "command", "runner", "testing"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
@@ -38,6 +39,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Build Tools",
     "Topic :: Utilities",
 ]
@@ -138,7 +140,7 @@ steps = [
     "lint",
     # Parallelizing the type checks and test is safe (they don't modify files), and it nets a ~3x
     # speedup over running them all serially.
-    ["type-check-py3.{8..13}", "test"],
+    ["type-check-py3.{8..14}", "test"],
 ]
 
 [tool.dev-cmd.tasks.ci]

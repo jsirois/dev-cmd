@@ -38,12 +38,14 @@ jobs:
             python-version: "3.12"
           - os: ubuntu-24.04
             python-version: "3.13"
+          - os: ubuntu-24.04
+            python-version: "3.14"
 
           - os: macos-15
-            python-version: "3.13"
+            python-version: "3.14"
 
           - os: windows-2022
-            python-version: "3.13"
+            python-version: "3.14"
     steps:
       - name: Checkout dev-cmd
         uses: actions/checkout@v4

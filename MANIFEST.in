@@ -1,5 +1,6 @@
 include uv.lock
 
+graft build-backend
 graft tests
 prune tests/.pytest_cache
 

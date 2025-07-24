@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.32.0
+
+Officially support Python PI and add a pylock.toml to the dev-cmd sdist and wheel to support a Pex
+experiment adding support for `pex3 run` against locked entry points (See: 
+https://discuss.python.org/t/pre-pep-add-ability-to-install-a-package-with-reproducible-dependencies).
+
 ## 0.31.3
 
 Fix venv creation to detect corrupted venvs (via system Python upgrades or un-installs).
