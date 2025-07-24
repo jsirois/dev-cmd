@@ -51,11 +51,12 @@ def test_substitute_markers(env) -> None:
         == current_markers["python_version"]
         == substitute(env, "{markers.python_version}")
     )
-    assert (
-        ".".join(map(str, sys.version_info[:3]))
-        == current_markers["python_full_version"]
-        == substitute(env, "{markers.python_full_version}")
-    )
+    if ("final", 0) == sys.version_info[3:]:
+        assert (
+            ".".join(map(str, sys.version_info[:3]))
+            == current_markers["python_full_version"]
+            == substitute(env, "{markers.python_full_version}")
+        )
 
     with pytest.raises(
         ValueError, match=re.escape("There is no Python environment marker named 'bob'.")
