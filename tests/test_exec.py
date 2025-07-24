@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import platform
 import subprocess
 import sys
 from pathlib import Path, PurePath
@@ -36,6 +37,9 @@ def project_dir() -> PurePath:
     )
 
 
+WINDOWS = platform.system().lower().startswith("win")
+
+
 @pytest.fixture
 def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePath) -> Path:
     monkeypatch.chdir(tmp_path)
@@ -44,7 +48,9 @@ def pyproject_toml(monkeypatch: MonkeyPatch, tmp_path: Path, project_dir: PurePa
     monkeypatch.setenv("UV_LINK_MODE", "copy")
     monkeypatch.delenv("VIRTUAL_ENV")
 
-    dev_cmd_with_old_pythons_req = f"dev-cmd[old-pythons] @ file://{project_dir.as_posix()}"
+    dev_cmd_with_old_pythons_req = (
+        f"dev-cmd[old-pythons] @ file://{'/' if WINDOWS else ''}{project_dir.as_posix()}"
+    )
 
     pyproject_toml_file = tmp_path / "pyproject.toml"
     pyproject_toml_file.write_text(
