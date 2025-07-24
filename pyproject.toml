@@ -5,7 +5,7 @@ build-backend = "dev_cmd_build.setuptools.build"
 
 [project]
 name = "dev-cmd"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "aioconsole",
     "ansicolors",
@@ -33,7 +33,6 @@ classifiers = [
     "Operating System :: Unix",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

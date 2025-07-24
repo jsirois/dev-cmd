@@ -1,10 +1,16 @@
 # Release Notes
 
+## 0.33.0
+
+Drop support for Python 3.8 and officially add support for Python PI.
+
+Also add a pylock.toml to the dev-cmd sdist and wheel to support a Pex
+experiment adding support for `pex3 run` against locked entry points (See:
+https://discuss.python.org/t/pre-pep-add-ability-to-install-a-package-with-reproducible-dependencies).
+
 ## 0.32.0
 
-Officially support Python PI and add a pylock.toml to the dev-cmd sdist and wheel to support a Pex
-experiment adding support for `pex3 run` against locked entry points (See: 
-https://discuss.python.org/t/pre-pep-add-ability-to-install-a-package-with-reproducible-dependencies).
+Unreleased.
 
 ## 0.31.3
 

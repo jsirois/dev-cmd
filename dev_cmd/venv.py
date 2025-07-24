@@ -111,9 +111,10 @@ def marker_environment(python: Python, quiet: bool = False) -> dict[str, str]:
     fingerprint = _fingerprint(resolved_python.encode())
     markers_file = _ensure_cache_dir() / "interpreters" / f"markers.{fingerprint}.json"
     if not os.path.exists(markers_file):
-        with FileLock(f"{markers_file}.lck"), TemporaryDirectory(
-            dir=markers_file.parent, prefix="packaging-venv."
-        ) as td:
+        with (
+            FileLock(f"{markers_file}.lck"),
+            TemporaryDirectory(dir=markers_file.parent, prefix="packaging-venv.") as td,
+        ):
             print(
                 f"{color.yellow(f'Calculating environment markers for --python {python}')}...",
                 file=sys.stderr,
