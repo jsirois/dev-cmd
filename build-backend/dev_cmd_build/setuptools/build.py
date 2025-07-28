@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import base64
+import csv
+import hashlib
 import os.path
 import shutil
 import subprocess
@@ -56,7 +59,7 @@ def build_sdist(sdist_directory: str, config_settings: dict[str, Any] | None = N
     sdist_name = setuptools.build_meta.build_sdist(sdist_directory, config_settings)
 
     sdist_path = Path(sdist_directory) / sdist_name
-    tarball_root_dir_name = "dev_cmd-{version}".format(version=__version__)
+    tarball_root_dir_name = f"dev_cmd-{__version__}"
 
     with _build_dir("sdist") as tmpdir:
         tarball_root_dir = tmpdir / tarball_root_dir_name
@@ -78,14 +81,24 @@ def build_wheel(
     )
 
     wheel_path = Path(wheel_directory) / wheel_name
-    dist_info_dir_name = "dev_cmd-{version}.dist-info".format(version=__version__)
+    dist_info_dir_name = f"dev_cmd-{__version__}.dist-info"
 
     with _build_dir("wheel") as tmpdir:
         with zipfile.ZipFile(wheel_path) as zf:
             original_contents = zf.namelist()
             zf.extractall(tmpdir)
+
         pylock_toml = _add_lock(tmpdir / dist_info_dir_name / "pylock")
+        pylock_toml_data = pylock_toml.read_bytes()
+        fingerprint = base64.urlsafe_b64encode(hashlib.sha256(pylock_toml_data).digest()).rstrip(
+            b"="
+        )
         pylock_toml_dest: str | None = str(pylock_toml.relative_to(tmpdir).as_posix())
+        with (tmpdir / dist_info_dir_name / "RECORD").open(mode="a") as fp:
+            csv.writer(fp).writerow(
+                (pylock_toml_dest, f"sha256={fingerprint.decode('ascii')}", len(pylock_toml_data))
+            )
+
         with zipfile.ZipFile(wheel_path, "w") as zf:
             for path in original_contents:
                 if (

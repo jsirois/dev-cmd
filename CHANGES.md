@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.32.1
+
+This release fixes the dev-cmd wheel `RECORD` metadata to include the embedded `pylock.toml` lock.
+
 ## 0.32.0
 
 Drop support for Python 3.8 and officially add support for Python PI.
