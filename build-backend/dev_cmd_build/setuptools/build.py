@@ -94,10 +94,14 @@ def build_wheel(
             b"="
         )
         pylock_toml_dest: str | None = str(pylock_toml.relative_to(tmpdir).as_posix())
-        with (tmpdir / dist_info_dir_name / "RECORD").open(mode="a") as fp:
-            csv.writer(fp).writerow(
-                (pylock_toml_dest, f"sha256={fingerprint.decode('ascii')}", len(pylock_toml_data))
-            )
+        record = tmpdir / dist_info_dir_name / "RECORD"
+        with record.open() as fp:
+            record_entries = list(csv.reader(fp))
+        record_entries.append(
+            [pylock_toml_dest, f"sha256={fingerprint.decode('ascii')}", len(pylock_toml_data)]
+        )
+        with (tmpdir / dist_info_dir_name / "RECORD").open(mode="w") as fp:
+            csv.writer(fp).writerows(sorted(record_entries))
 
         with zipfile.ZipFile(wheel_path, "w") as zf:
             for path in original_contents:

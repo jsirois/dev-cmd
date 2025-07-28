@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.32.2
+
+This release fixes the dev-cmd wheel `RECORD` metadata to be Windows compatible.
+
 ## 0.32.1
 
 This release fixes the dev-cmd wheel `RECORD` metadata to include the embedded `pylock.toml` lock.
