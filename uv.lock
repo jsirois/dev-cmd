@@ -207,11 +207,11 @@ wheels = [
 
 [[package]]
 name = "pex"
-version = "2.33.7"
+version = "2.48.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/83/f1/47b1dc8f43ed8e467ca17b81e9ef2d943093b3b7630f3c1c4165a40e1bba/pex-2.33.7.tar.gz", hash = "sha256:2c663d7bcd00cb0801a2df259d84b3846926141fd1244a5cde4ec71fbdfa73c3", size = 4697432, upload-time = "2025-03-28T01:10:22.227Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b6/51/96bc30e1d47ef900b717d5baeec9746733d183b08504dbfca470d23a5dd8/pex-2.48.2.tar.gz", hash = "sha256:5520bec2b574455fe6a1628ed36810157f1995748a80fca60e0d9194293933e1", size = 4970424, upload-time = "2025-07-28T04:43:57.523Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/da/1d91d20d3e56a0f65d56106e2b56ae3e5a863e43a3f32ffbda1c3c7fa698/pex-2.33.7-py2.py3-none-any.whl", hash = "sha256:e97d688dd3b80c1264817001cb593c0c708cc60772508a73ffcecb362d240996", size = 3754049, upload-time = "2025-03-28T01:10:19.741Z" },
+    { url = "https://files.pythonhosted.org/packages/45/87/8e7b52c54e560e4759d5e045f1349a91bfdb11069e2c1b61e0b71fec3775/pex-2.48.2-py2.py3-none-any.whl", hash = "sha256:bf5985dcadc418cc16549d3d7d1a7c374ad568127e62cd82a564b2090397375a", size = 3852012, upload-time = "2025-07-28T04:43:55.206Z" },
 ]
 
 [[package]]
