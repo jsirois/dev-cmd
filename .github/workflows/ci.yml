@@ -37,20 +37,16 @@ jobs:
           - os: ubuntu-24.04
             python-version: "3.13"
           - os: ubuntu-24.04
-            python-version: "3.14.0-rc.1"
+            python-version: "3.14"
 
           - os: macos-15
-            python-version: "3.14.0-rc.1"
+            python-version: "3.14"
 
           - os: windows-2022
-            python-version: "3.14.0-rc.1"
+            python-version: "3.14"
     steps:
       - name: Checkout dev-cmd
         uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
       - name: Run CI checks
