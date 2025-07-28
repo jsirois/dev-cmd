@@ -101,7 +101,9 @@ def build_wheel(
             [pylock_toml_dest, f"sha256={fingerprint.decode('ascii')}", len(pylock_toml_data)]
         )
         with (tmpdir / dist_info_dir_name / "RECORD").open(mode="w") as fp:
-            csv.writer(fp).writerows(sorted(record_entries))
+            csv.writer(fp, delimiter=",", doublequote='"', lineterminator="\n").writerows(
+                sorted(record_entries)
+            )
 
         with zipfile.ZipFile(wheel_path, "w") as zf:
             for path in original_contents:
