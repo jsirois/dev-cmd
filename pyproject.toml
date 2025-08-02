@@ -1,7 +1,30 @@
 [build-system]
-requires = ["setuptools"]
-backend-path = ["build-backend", ""]
-build-backend = "dev_cmd_build.setuptools.build"
+requires = [
+    # 1st publication of pex.build_backend.wrap was in Pex 2.50.0.
+    "pex>=2.50",
+
+    # 1st support for license expressions was in setuptools 77.0.0.
+    "setuptools>=77",
+]
+build-backend = "pex.build_backend.wrap"
+
+[tool.pex.build_backend]
+delegate-build-backend = "setuptools.build_meta"
+
+[[tool.pex.build_backend.script-locks]]
+command = [
+    "uv",
+    "export",
+    "--format",
+    "pylock.toml",
+    "--no-header",
+    "--no-emit-project",
+    "--all-extras",
+    "--no-dev",
+    "-q",
+    "-o",
+    "{lock_path}",
+]
 
 [project]
 name = "dev-cmd"

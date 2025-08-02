@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.32.3
+
+This release switches from a bespoke lock embedding in dev-cmd distributuons to use of the
+`pex.build_backend.wrap` delegating backend to embed the dev-cmd lock.
+
 ## 0.32.2
 
 This release fixes the dev-cmd wheel `RECORD` metadata to be Windows compatible.
