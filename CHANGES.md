@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.32.4
+
+This release brings compatility with older versions of `filelock` when installing `dev-cmd` with the
+`old-pythons` extra.
+
 ## 0.32.3
 
 This release switches from a bespoke lock embedding in dev-cmd distributuons to use of the

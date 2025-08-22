@@ -5,6 +5,8 @@ requires = [
 
     # 1st support for license expressions was in setuptools 77.0.0.
     "setuptools>=77",
+
+    "uv",
 ]
 build-backend = "pex.build_backend.wrap"
 
