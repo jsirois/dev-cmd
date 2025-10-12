@@ -171,7 +171,7 @@ absent from the command name, it evaluates to `--color=auto`. Re-visiting the `d
 example above, you might more usefully parameterize pytest debugging with:
 ```toml
 [tool.dev-cmd.commands]
-pytest = ["python", "-m", "pytest", {discard_empty = "{-debug?--pdb:"}]
+pytest = ["python", "-m", "pytest", {discard_empty = "{-debug?--pdb:}"}]
 ```
 
 Instead of having to say `DEBUG=--pdb uv run dev-cmd pytest` you can say
