@@ -51,11 +51,11 @@ jobs:
       id-token: write
     steps:
       - name: Checkout dev-cmd ${{ needs.determine-tag.outputs.release-tag }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.determine-tag.outputs.release-tag }}
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
       - name: Build sdist and wheel
         run: uv build
       - name: Publish dev-cmd ${{ needs.determine-tag.outputs.release-tag }}
